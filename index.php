@@ -492,44 +492,32 @@ let currentMessages = [];
 let lastMessageId = null;
 let initialLoad = true;
 
-let audioCtx = null;
+// Buat elemen audio HTML5 secara dinamis
+const notifAudio = new Audio('notification.mp3'); // Ganti file ini jika ingin custom
+notifAudio.volume = 1.0; // Volume maksimal (0.0 sampai 1.0)
 
-function initAudio() {
-    if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
+// Unlock audio saat user interaksi pertama kali (mengatasi kebijakan Auto-Play browser)
+function unlockAudio() {
+    notifAudio.play().then(() => {
+        notifAudio.pause();
+        notifAudio.currentTime = 0;
+    }).catch(e => console.warn('Audio di-lock browser', e));
 }
 
-// Unlock audio on any first interaction
 ['click', 'touchstart', 'keydown'].forEach(evt => 
-    document.body.addEventListener(evt, initAudio, { once: true })
+    document.body.addEventListener(evt, unlockAudio, { once: true })
 );
 
 function playNotificationSound() {
     try {
-        if (!audioCtx) initAudio();
-        if (audioCtx.state !== 'running') return; // Akan diblokir jika user belum interaksi sama sekali
-
-        const osc = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-        osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        
-        // Nada tunggal "Ting" yang jernih dan cukup keras
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1046.50, audioCtx.currentTime); // C6
-
-        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.6);
+        // Reset waktu ke awal dan mainkan
+        notifAudio.currentTime = 0;
+        let playPromise = notifAudio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(e => console.warn('Audio auto-play diblokir', e));
+        }
     } catch (e) {
-        console.warn('Audio API failed', e);
+        console.warn('Gagal memutar audio', e);
     }
 }
 
