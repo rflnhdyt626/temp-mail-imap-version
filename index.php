@@ -492,26 +492,42 @@ let currentMessages = [];
 let lastMessageId = null;
 let initialLoad = true;
 
+let audioCtx = null;
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+// Unlock audio on any first interaction
+['click', 'touchstart', 'keydown'].forEach(evt => 
+    document.body.addEventListener(evt, initAudio, { once: true })
+);
+
 function playNotificationSound() {
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        if (ctx.state === 'suspended') ctx.resume();
-        const osc = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-        osc.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        
-        // Dua nada (Ding-Dong) yang elegan
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
-        osc.frequency.exponentialRampToValueAtTime(1318.51, ctx.currentTime + 0.1); // E6
+        if (!audioCtx) initAudio();
+        if (audioCtx.state !== 'running') return; // Akan diblokir jika user belum interaksi sama sekali
 
-        gainNode.gain.setValueAtTime(0, ctx.currentTime);
-        gainNode.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.05);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        // Nada tunggal "Ting" yang jernih dan cukup keras
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1046.50, audioCtx.currentTime); // C6
+
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
 
         osc.start();
-        osc.stop(ctx.currentTime + 0.5);
+        osc.stop(audioCtx.currentTime + 0.6);
     } catch (e) {
         console.warn('Audio API failed', e);
     }
