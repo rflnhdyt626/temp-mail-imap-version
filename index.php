@@ -494,27 +494,48 @@ let initialLoad = true;
 
 // Buat elemen audio HTML5 secara dinamis
 const notifAudio = new Audio('notification.mp3'); // Ganti file ini jika ingin custom
-notifAudio.volume = 1.0; // Volume maksimal (0.0 sampai 1.0)
+// Berikan preload metadata agar browser langsung mengenali file ini sebagai audio valid
+notifAudio.preload = 'auto'; 
+notifAudio.volume = 1.0;
 
-// Unlock audio saat user interaksi pertama kali (mengatasi kebijakan Auto-Play browser)
-function unlockAudio() {
-    notifAudio.play().then(() => {
-        notifAudio.pause();
-        notifAudio.currentTime = 0;
-    }).catch(e => console.warn('Audio di-lock browser', e));
+// Mekanisme peluru perak mengatasi blokir Auto-Play (Terutama di Safari/iOS & Chrome Mobile)
+// Metode: "Pancing" putar audio kosong (tanpa suara) sebagai hasil LANGSUNG dari interaksi klik user
+let isAudioUnlocked = false;
+function forceUnlockAudio() {
+    if (isAudioUnlocked) return;
+    
+    // Putar dan langsung pause sepersekian milidetik kemudian. 
+    // Ini mengelabui browser seakan-akan user 'setuju' memutar media
+    notifAudio.volume = 0; // bisukan sementara
+    const p = notifAudio.play();
+    if (p !== undefined) {
+        p.then(() => {
+            notifAudio.pause();
+            notifAudio.currentTime = 0;
+            notifAudio.volume = 1.0; // kembalikan max
+            isAudioUnlocked = true;
+            // Lepas event listener agar tidak berat
+            ['touchstart', 'click'].forEach(evt => document.body.removeEventListener(evt, forceUnlockAudio));
+        }).catch(e => {
+            // Jika masuk ke sini, berarti browser masih mem-blok.
+            console.log('Unlock audio ditahan browser, menunggu interaksi asli...', e);
+        });
+    }
 }
 
-['click', 'touchstart', 'keydown'].forEach(evt => 
-    document.body.addEventListener(evt, unlockAudio, { once: true })
+// Tempelkan di body sejak awal
+['touchstart', 'click'].forEach(evt => 
+    document.body.addEventListener(evt, forceUnlockAudio)
 );
 
 function playNotificationSound() {
     try {
-        // Reset waktu ke awal dan mainkan
+        if (!isAudioUnlocked) return; // Jangan paksa putar jika statusnya belum ter-unlock (menghindari Console Error spam)
+        
         notifAudio.currentTime = 0;
         let playPromise = notifAudio.play();
         if (playPromise !== undefined) {
-            playPromise.catch(e => console.warn('Audio auto-play diblokir', e));
+            playPromise.catch(e => console.log('Tidak bisa putar audio notifikasi:', e));
         }
     } catch (e) {
         console.warn('Gagal memutar audio', e);
