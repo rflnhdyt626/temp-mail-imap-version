@@ -23,8 +23,6 @@ $html = trim($parts['html']);
 $bodyText = $plain !== '' ? nl2br(htmlspecialchars($plain, ENT_QUOTES, 'UTF-8')) : nl2br(htmlspecialchars(html_to_safe_text($html), ENT_QUOTES, 'UTF-8'));
 $bodyHtml = $html !== '' ? $html : '<pre style="white-space:pre-wrap;word-break:break-word;">' . htmlspecialchars($plain, ENT_QUOTES, 'UTF-8') . '</pre>';
 
-// imap_close($stream); // Biarkan tetap terbuka untuk reuse
-
 json_response([
     'ok' => true,
     'email' => $targetEmail,

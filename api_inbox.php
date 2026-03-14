@@ -14,18 +14,16 @@ $stream = open_imap();
 $total = imap_num_msg($stream);
 
 $messages = [];
-$maxScan = 50; // Pada IMAP, 50-100 scan sangat cepat (mili-detik) karena bulk command
+$maxScan = 50;
 $maxResults = 20;
 
 if ($total > 0) {
     $startMsg = max(1, $total - $maxScan + 1);
     $sequence = "$startMsg:$total";
     
-    // Fetch overview secara bulk (sangat stabil untuk cross-check header)
     $overviews = imap_fetch_overview($stream, $sequence, 0);
     
     if (is_array($overviews)) {
-        // Balik urutan untuk mendapatkan email terbaru
         usort($overviews, function($a, $b) {
             return $b->msgno <=> $a->msgno;
         });
@@ -58,7 +56,6 @@ if ($total > 0) {
 }
 
 $total = imap_num_msg($stream);
-// imap_close($stream); // Jangan ditutup agar proxy/koneksi bisa di-reuse pada runtime yang sama (jika dipanggil via sub-request dalam FCGI)
 
 $durationMs = round((microtime(true) - $startTime) * 1000, 2);
 

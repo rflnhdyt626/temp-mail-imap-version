@@ -1,7 +1,7 @@
 <?php
 session_start();
 
-$APP_PASSWORD = 'RafliGalaprimesLove';
+$APP_PASSWORD = 'YOUR_PASSWORD_HERE'; // Ganti dengan password yang diinginkan
 
 if (isset($_POST['login_password'])) {
     if ($_POST['login_password'] === $APP_PASSWORD) {
