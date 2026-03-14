@@ -69,13 +69,20 @@ function json_response(array $payload, int $status = 200): void
     exit;
 }
 
-function random_local_part(int $length = 10): string
+function random_local_part(): string
 {
-    $chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    $vowels = 'aeiou';
+    $consonants = 'bcdfghjklmnprstvwx';
+    $length = random_int(3, 5);
     $out = '';
     for ($i = 0; $i < $length; $i++) {
-        $out .= $chars[random_int(0, strlen($chars) - 1)];
+        if ($i % 2 === 0) {
+            $out .= $consonants[random_int(0, strlen($consonants) - 1)];
+        } else {
+            $out .= $vowels[random_int(0, strlen($vowels) - 1)];
+        }
     }
+    $out .= random_int(10, 99);
     return $out;
 }
 
