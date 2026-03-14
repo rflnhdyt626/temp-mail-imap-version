@@ -493,52 +493,56 @@ let lastMessageId = null;
 let initialLoad = true;
 
 // Buat elemen audio HTML5 secara dinamis
-const notifAudio = new Audio('notification.mp3'); // Ganti file ini jika ingin custom
-// Berikan preload metadata agar browser langsung mengenali file ini sebagai audio valid
+const notifAudio = new Audio('notification.mp3'); 
 notifAudio.preload = 'auto'; 
 notifAudio.volume = 1.0;
 
-// Mekanisme peluru perak mengatasi blokir Auto-Play (Terutama di Safari/iOS & Chrome Mobile)
-// Metode: "Pancing" putar audio kosong (tanpa suara) sebagai hasil LANGSUNG dari interaksi klik user
 let isAudioUnlocked = false;
+
+// Fungsi untuk mengetes suara sekaligus meng-unlock browser
 function forceUnlockAudio() {
     if (isAudioUnlocked) return;
     
-    // Putar dan langsung pause sepersekian milidetik kemudian. 
-    // Ini mengelabui browser seakan-akan user 'setuju' memutar media
-    notifAudio.volume = 0; // bisukan sementara
+    // Langsung putar suara asli sebagai TEST di awal (seperti permintaan user)
+    notifAudio.volume = 1.0;
     const p = notifAudio.play();
+    
     if (p !== undefined) {
         p.then(() => {
-            notifAudio.pause();
-            notifAudio.currentTime = 0;
-            notifAudio.volume = 1.0; // kembalikan max
             isAudioUnlocked = true;
-            // Lepas event listener agar tidak berat
-            ['touchstart', 'click'].forEach(evt => document.body.removeEventListener(evt, forceUnlockAudio));
+            console.log('Audio Berhasil di-Unlock!');
+            
+            // Beri tanda visual di pojok kanan bawah kalau suara aktif
+            const indicator = document.createElement('div');
+            indicator.style = "position:fixed;bottom:20px;right:20px;background:rgba(34,197,94,0.9);color:white;padding:8px 15px;border-radius:10px;font-size:12px;z-index:9999;box-shadow:0 4px 15px rgba(0,0,0,0.3);pointer-events:none;";
+            indicator.innerHTML = "🔊 Notifikasi Suara Aktif";
+            document.body.appendChild(indicator);
+            setTimeout(() => indicator.style.opacity = '0', 3000);
+            setTimeout(() => indicator.remove(), 4000);
+
+            // Lepas listener
+            ['touchstart', 'click', 'mousedown'].forEach(evt => document.body.removeEventListener(evt, forceUnlockAudio));
         }).catch(e => {
-            // Jika masuk ke sini, berarti browser masih mem-blok.
-            console.log('Unlock audio ditahan browser, menunggu interaksi asli...', e);
+            console.log('Menunggu klik pertama untuk aktifkan suara...', e);
         });
     }
 }
 
-// Tempelkan di body sejak awal
-['touchstart', 'click'].forEach(evt => 
+// Pantau klik pertama di mana saja untuk mengaktifkan suara
+['touchstart', 'click', 'mousedown'].forEach(evt => 
     document.body.addEventListener(evt, forceUnlockAudio)
 );
 
 function playNotificationSound() {
     try {
-        if (!isAudioUnlocked) return; // Jangan paksa putar jika statusnya belum ter-unlock (menghindari Console Error spam)
-        
-        notifAudio.currentTime = 0;
-        let playPromise = notifAudio.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(e => console.log('Tidak bisa putar audio notifikasi:', e));
+        if (!isAudioUnlocked) {
+            console.warn('Suara belum di-unlock oleh user (butuh klik pertama)');
+            return;
         }
+        notifAudio.currentTime = 0;
+        notifAudio.play().catch(e => console.log('Gagal putar:', e));
     } catch (e) {
-        console.warn('Gagal memutar audio', e);
+        console.warn('Error audio:', e);
     }
 }
 
