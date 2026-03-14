@@ -548,13 +548,25 @@ function forceUnlockAudio() {
 function playNotificationSound() {
     try {
         if (!isAudioUnlocked) {
-            console.warn('Suara belum di-unlock oleh user');
+            console.warn('Suara diblokir browser. Klik di mana saja pada halaman untuk aktifkan.');
             return;
         }
-        // Clone node agar suara bisa tumpang tindih jika email masuk beruntun
-        const soundClone = notifAudio.cloneNode();
-        soundClone.volume = 1.0;
-        soundClone.play().catch(e => console.log('Gagal putar:', e));
+        
+        // Gunakan elemen tunggal dan reset ke awal
+        notifAudio.pause();
+        notifAudio.currentTime = 0;
+        
+        let playPromise = notifAudio.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                console.log('Suara notifikasi berhasil diputar!');
+            }).catch(e => {
+                console.error('Gagal putar suara:', e);
+                // Jika gagal di sini, biasanya status unlock hilang
+                isAudioUnlocked = false;
+                updateAudioUI(false);
+            });
+        }
     } catch (e) {
         console.warn('Error audio:', e);
     }
@@ -674,7 +686,8 @@ async function refreshInbox() {
     // Deteksi email baru dan mainkan suara
     if (currentMessages.length > 0) {
         const topId = currentMessages[0].id;
-        if (!initialLoad && lastMessageId && topId !== lastMessageId) {
+        if (!initialLoad && lastMessageId && String(topId) !== String(lastMessageId)) {
+            console.log('Email baru terdeteksi! ID:', topId);
             playNotificationSound();
         }
         lastMessageId = topId;
