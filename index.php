@@ -431,7 +431,12 @@ $config = app_config();
             <h1>Temp Mail</h1>
             <p><?= htmlspecialchars($config['domain'], ENT_QUOTES, 'UTF-8') ?> • inbox otomatis refresh tiap <?= (int)$config['poll_interval_seconds'] ?> detik</p>
         </div>
-        <a class="logout" href="?logout=1">Logout</a>
+        <div style="display:flex; gap:10px; align-items:center;">
+             <div id="audioStatusBadge" style="font-size:12px; padding:6px 12px; border-radius:10px; background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.3); display:flex; align-items:center; gap:6px;">
+                 <span id="audioStatusIcon">🔇</span> <span id="audioStatusText">Suara Mati (Klik untuk aktif)</span>
+             </div>
+             <a class="logout" href="?logout=1">Logout</a>
+        </div>
     </div>
 
     <div class="hero">
@@ -499,26 +504,33 @@ notifAudio.volume = 1.0;
 
 let isAudioUnlocked = false;
 
+function updateAudioUI(unlocked) {
+    const badge = document.getElementById('audioStatusBadge');
+    const icon = document.getElementById('audioStatusIcon');
+    const text = document.getElementById('audioStatusText');
+    
+    if (unlocked) {
+        badge.style.background = "rgba(34,197,94,0.15)";
+        badge.style.color = "#4ade80";
+        badge.style.borderColor = "rgba(34,197,94,0.3)";
+        icon.textContent = "🔊";
+        text.innerHTML = 'Notifikasi Aktif <button onclick="playNotificationSound()" style="background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;padding:0;margin-left:5px;font-size:11px;">(Tes)</button>';
+    }
+}
+
 // Fungsi untuk mengetes suara sekaligus meng-unlock browser
 function forceUnlockAudio() {
     if (isAudioUnlocked) return;
     
-    // Langsung putar suara asli sebagai TEST di awal (seperti permintaan user)
+    // Langsung putar suara asli sebagai TEST di awal
     notifAudio.volume = 1.0;
     const p = notifAudio.play();
     
     if (p !== undefined) {
         p.then(() => {
             isAudioUnlocked = true;
+            updateAudioUI(true);
             console.log('Audio Berhasil di-Unlock!');
-            
-            // Beri tanda visual di pojok kanan bawah kalau suara aktif
-            const indicator = document.createElement('div');
-            indicator.style = "position:fixed;bottom:20px;right:20px;background:rgba(34,197,94,0.9);color:white;padding:8px 15px;border-radius:10px;font-size:12px;z-index:9999;box-shadow:0 4px 15px rgba(0,0,0,0.3);pointer-events:none;";
-            indicator.innerHTML = "🔊 Notifikasi Suara Aktif";
-            document.body.appendChild(indicator);
-            setTimeout(() => indicator.style.opacity = '0', 3000);
-            setTimeout(() => indicator.remove(), 4000);
 
             // Lepas listener
             ['touchstart', 'click', 'mousedown'].forEach(evt => document.body.removeEventListener(evt, forceUnlockAudio));
@@ -536,11 +548,13 @@ function forceUnlockAudio() {
 function playNotificationSound() {
     try {
         if (!isAudioUnlocked) {
-            console.warn('Suara belum di-unlock oleh user (butuh klik pertama)');
+            console.warn('Suara belum di-unlock oleh user');
             return;
         }
-        notifAudio.currentTime = 0;
-        notifAudio.play().catch(e => console.log('Gagal putar:', e));
+        // Clone node agar suara bisa tumpang tindih jika email masuk beruntun
+        const soundClone = notifAudio.cloneNode();
+        soundClone.volume = 1.0;
+        soundClone.play().catch(e => console.log('Gagal putar:', e));
     } catch (e) {
         console.warn('Error audio:', e);
     }
