@@ -671,43 +671,60 @@ async function refreshInbox() {
     if (!currentAlias) return;
 
     const status = document.getElementById('inboxStatus');
+    console.log(`[Polling] Mengecek inbox untuk: ${currentEmail()}`);
     status.textContent = `Mengecek ${currentEmail()}...`;
 
-    const res = await fetch(`api_inbox.php?alias=${encodeURIComponent(currentAlias)}`);
-    const data = await res.json();
+    try {
+        const res = await fetch(`api_inbox.php?alias=${encodeURIComponent(currentAlias)}`);
+        const data = await res.json();
 
-    if (!data.ok) {
-        status.textContent = data.error || 'Gagal memuat inbox.';
-        return;
-    }
-
-    currentMessages = Array.isArray(data.messages) ? data.messages : [];
-    
-    // Deteksi email baru dan mainkan suara
-    if (currentMessages.length > 0) {
-        const topId = currentMessages[0].id;
-        if (!initialLoad && lastMessageId && String(topId) !== String(lastMessageId)) {
-            console.log('Email baru terdeteksi! ID:', topId);
-            playNotificationSound();
+        if (!data.ok) {
+            console.error('[Polling] Server error:', data.error);
+            status.textContent = data.error || 'Gagal memuat inbox.';
+            return;
         }
-        lastMessageId = topId;
+
+        currentMessages = Array.isArray(data.messages) ? data.messages : [];
+        console.log(`[Polling] Berhasil. Dapat ${currentMessages.length} email.`);
+        
+        // Deteksi email baru dan mainkan suara
+        if (currentMessages.length > 0) {
+            const topId = currentMessages[0].id;
+            console.log(`[Check] ID Email Terbaru di Server: ${topId} | ID Terakhir yang dicatat: ${lastMessageId}`);
+
+            if (!initialLoad && lastMessageId && String(topId) !== String(lastMessageId)) {
+                console.log('%c[NOTIF] ADA EMAIL BARU! Memicu suara...', 'color: #22c55e; font-weight: bold; font-size: 12px;');
+                playNotificationSound();
+            } else if (initialLoad) {
+                console.log('[Init] Pemuatan pertama, mencatat ID awal.');
+            } else {
+                console.log('[Check] Tidak ada email baru.');
+            }
+            lastMessageId = topId;
+        } else {
+            console.log('[Check] Inbox kosong.');
+        }
+        
+        initialLoad = false;
+
+        renderInbox(currentMessages, `${data.count} email • update ${data.polled_at}`);
+
+        if (!currentMessages.length) {
+            selectedId = null;
+            return;
+        }
+
+        const stillExists = currentMessages.some(msg => String(msg.id) === String(selectedId));
+        if (!selectedId || !stillExists) {
+            selectedId = currentMessages[0].id;
+            console.log(`[UI] Memilih email otomatis ke ID: ${selectedId}`);
+        }
+
+        highlightSelected(selectedId);
+        await openMessage(selectedId, false);
+    } catch (err) {
+        console.error('[Polling] Fetch failed:', err);
     }
-    initialLoad = false;
-
-    renderInbox(currentMessages, `${data.count} email • update ${data.polled_at}`);
-
-    if (!currentMessages.length) {
-        selectedId = null;
-        return;
-    }
-
-    const stillExists = currentMessages.some(msg => String(msg.id) === String(selectedId));
-    if (!selectedId || !stillExists) {
-        selectedId = currentMessages[0].id;
-    }
-
-    highlightSelected(selectedId);
-    await openMessage(selectedId, false);
 }
 
 async function openMessage(id, doHighlight = true) {
