@@ -497,18 +497,30 @@ let currentMessages = [];
 let lastMessageId = null;
 let initialLoad = true;
 
-// Buat elemen audio HTML5 secara dinamis
-const notifAudio = new Audio('notification.mp3'); 
-notifAudio.preload = 'auto'; 
-notifAudio.volume = 1.0;
-
+// Konfigurasi Audio Web API (Lebih stabil untuk background tab)
+let audioCtx = null;
+let audioBuffer = null;
 let isAudioUnlocked = false;
+
+// Load file suara ke dalam Buffer satu kali saja di awal
+async function loadNotificationBuffer() {
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const response = await fetch('notification.mp3');
+        const arrayBuffer = await response.arrayBuffer();
+        audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        console.log('[Audio] File notification.mp3 berhasil dimuat ke buffer.');
+    } catch (e) {
+        console.error('[Audio] Gagal memuat file mp3:', e);
+    }
+}
 
 function updateAudioUI(unlocked) {
     const badge = document.getElementById('audioStatusBadge');
     const icon = document.getElementById('audioStatusIcon');
     const text = document.getElementById('audioStatusText');
-    
+    if (!badge) return;
+
     if (unlocked) {
         badge.style.background = "rgba(34,197,94,0.15)";
         badge.style.color = "#4ade80";
@@ -518,57 +530,50 @@ function updateAudioUI(unlocked) {
     }
 }
 
-// Fungsi untuk mengetes suara sekaligus meng-unlock browser
-function forceUnlockAudio() {
+async function forceUnlockAudio() {
     if (isAudioUnlocked) return;
     
-    // Langsung putar suara asli sebagai TEST di awal
-    notifAudio.volume = 1.0;
-    const p = notifAudio.play();
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
     
-    if (p !== undefined) {
-        p.then(() => {
-            isAudioUnlocked = true;
-            updateAudioUI(true);
-            console.log('Audio Berhasil di-Unlock!');
+    if (!audioBuffer) await loadNotificationBuffer();
 
-            // Lepas listener
-            ['touchstart', 'click', 'mousedown'].forEach(evt => document.body.removeEventListener(evt, forceUnlockAudio));
-        }).catch(e => {
-            console.log('Menunggu klik pertama untuk aktifkan suara...', e);
-        });
-    }
+    // Mainkan suara tes segera
+    playNotificationSound();
+    
+    isAudioUnlocked = true;
+    updateAudioUI(true);
+    console.log('[Audio] Berhasil di-Unlock lewat interaksi user.');
+
+    ['touchstart', 'click', 'mousedown'].forEach(evt => document.body.removeEventListener(evt, forceUnlockAudio));
 }
 
-// Pantau klik pertama di mana saja untuk mengaktifkan suara
-['touchstart', 'click', 'mousedown'].forEach(evt => 
+['touchstart', 'click', 'mousedown', 'keydown'].forEach(evt => 
     document.body.addEventListener(evt, forceUnlockAudio)
 );
 
 function playNotificationSound() {
+    if (!audioCtx || !audioBuffer) {
+        console.warn('[Audio] Buffer belum siap atau AudioContext belum di-unlock.');
+        return;
+    }
+
     try {
-        if (!isAudioUnlocked) {
-            console.warn('Suara diblokir browser. Klik di mana saja pada halaman untuk aktifkan.');
-            return;
-        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
         
-        // Gunakan elemen tunggal dan reset ke awal
-        notifAudio.pause();
-        notifAudio.currentTime = 0;
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
         
-        let playPromise = notifAudio.play();
-        if (playPromise !== undefined) {
-            playPromise.then(() => {
-                console.log('Suara notifikasi berhasil diputar!');
-            }).catch(e => {
-                console.error('Gagal putar suara:', e);
-                // Jika gagal di sini, biasanya status unlock hilang
-                isAudioUnlocked = false;
-                updateAudioUI(false);
-            });
-        }
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = 1.5; // Naikkan volume 150%
+        
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        source.start(0);
+        console.log('[Audio] Perintah putar suara berhasil dikirim ke AudioContext.');
     } catch (e) {
-        console.warn('Error audio:', e);
+        console.error('[Audio] Error saat memutar suara:', e);
     }
 }
 
@@ -690,19 +695,24 @@ async function refreshInbox() {
         // Deteksi email baru dan mainkan suara
         if (currentMessages.length > 0) {
             const topId = currentMessages[0].id;
-            console.log(`[Check] ID Email Terbaru di Server: ${topId} | ID Terakhir yang dicatat: ${lastMessageId}`);
+            console.log(`[Check] ID Email Terbaru: ${topId} | Terakhir: ${lastMessageId}`);
 
-            if (!initialLoad && lastMessageId && String(topId) !== String(lastMessageId)) {
-                console.log('%c[NOTIF] ADA EMAIL BARU! Memicu suara...', 'color: #22c55e; font-weight: bold; font-size: 12px;');
+            // LOGIKA DIPERBAIKI: Tetap bunyi jika sebelumnya inbox kosong (lastMessageId null)
+            const isDifferent = lastMessageId !== null && String(topId) !== String(lastMessageId);
+            const isFirstArrival = lastMessageId === null && !initialLoad;
+
+            if (isDifferent || isFirstArrival) {
+                console.log('%c[NOTIF] ADA EMAIL BARU! Memicu suara...', 'color: #22c55e; font-weight: bold; font-size: 14px;');
                 playNotificationSound();
             } else if (initialLoad) {
-                console.log('[Init] Pemuatan pertama, mencatat ID awal.');
+                console.log('[Init] Pemuatan pertama, mencatat ID tanpa bunyi.');
             } else {
                 console.log('[Check] Tidak ada email baru.');
             }
             lastMessageId = topId;
         } else {
-            console.log('[Check] Inbox kosong.');
+            console.log('[Index] Inbox kosong.');
+            lastMessageId = null; // Reset agar saat ada email masuk nanti, ia terdeteksi sebagai "baru"
         }
         
         initialLoad = false;
