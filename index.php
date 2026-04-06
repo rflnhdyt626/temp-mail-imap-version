@@ -583,7 +583,6 @@ endif;
             </div>
             <div class="viewer-body">
                 <iframe id="viewerFrame" class="viewer-frame" sandbox="allow-same-origin" srcdoc="<div style='font-family:Arial,sans-serif;padding:24px;color:#666'>Belum ada email dipilih.</div>"></iframe>
-            </div>
         </div>
     </div>
 </div>
@@ -600,144 +599,315 @@ let currentMessages = [];
 let lastMessageId = null;
 let initialLoad = true;
 
-// Audio logic
-let audioCtx = null, audioBuffer = null, isAudioUnlocked = false;
+// Konfigurasi Audio Web API (Lebih stabil untuk background tab)
+let audioCtx = null;
+let audioBuffer = null;
+let isAudioUnlocked = false;
+
+// Load file suara ke dalam Buffer satu kali saja di awal
 async function loadNotificationBuffer() {
     try {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const response = await fetch('notification.mp3');
         const arrayBuffer = await response.arrayBuffer();
         audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    } catch (e) { console.error('Audio load failed', e); }
+        console.log('[Audio] File notification.mp3 berhasil dimuat ke buffer.');
+    } catch (e) {
+        console.error('[Audio] Gagal memuat file mp3:', e);
+    }
 }
 
 function updateAudioUI(unlocked) {
-    const badge = document.getElementById('audioStatusBadge'), icon = document.getElementById('audioStatusIcon'), text = document.getElementById('audioStatusText');
+    const badge = document.getElementById('audioStatusBadge');
+    const icon = document.getElementById('audioStatusIcon');
+    const text = document.getElementById('audioStatusText');
+    if (!badge) return;
+
     if (unlocked) {
-        badge.style.background = "rgba(34,197,94,0.15)"; badge.style.color = "#4ade80"; badge.style.borderColor = "rgba(34,197,94,0.3)";
-        icon.textContent = "🔊"; text.textContent = "Notifikasi Aktif";
+        badge.style.background = "rgba(34,197,94,0.15)";
+        badge.style.color = "#4ade80";
+        badge.style.borderColor = "rgba(34,197,94,0.3)";
+        icon.textContent = "🔊";
+        text.innerHTML = 'Notifikasi Aktif <button onclick="playNotificationSound()" style="background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;padding:0;margin-left:5px;font-size:11px;">(Tes)</button>';
     }
 }
 
 async function forceUnlockAudio() {
     if (isAudioUnlocked) return;
+    
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') await audioCtx.resume();
+    
     if (!audioBuffer) await loadNotificationBuffer();
-    isAudioUnlocked = true; updateAudioUI(true);
+
+    // Mainkan suara tes segera
+    playNotificationSound();
+    
+    isAudioUnlocked = true;
+    updateAudioUI(true);
+    console.log('[Audio] Berhasil di-Unlock lewat interaksi user.');
+
+    ['touchstart', 'click', 'mousedown'].forEach(evt => document.body.removeEventListener(evt, forceUnlockAudio));
 }
-['touchstart', 'click', 'keydown'].forEach(evt => document.body.addEventListener(evt, forceUnlockAudio));
+
+['touchstart', 'click', 'mousedown', 'keydown'].forEach(evt => 
+    document.body.addEventListener(evt, forceUnlockAudio)
+);
 
 function playNotificationSound() {
-    if (!audioCtx || !audioBuffer) return;
+    if (!audioCtx || !audioBuffer) {
+        console.warn('[Audio] Buffer belum siap atau AudioContext belum di-unlock.');
+        return;
+    }
+
     try {
         if (audioCtx.state === 'suspended') audioCtx.resume();
-        const sc = audioCtx.createBufferSource(); sc.buffer = audioBuffer;
-        const gn = audioCtx.createGain(); gn.gain.value = 1.5;
-        sc.connect(gn); gn.connect(audioCtx.destination); sc.start(0);
-    } catch (e) {}
+        
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = 1.5; // Naikkan volume 150%
+        
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        source.start(0);
+        console.log('[Audio] Perintah putar suara berhasil dikirim ke AudioContext.');
+    } catch (e) {
+        console.error('[Audio] Error saat memutar suara:', e);
+    }
 }
 
-function currentEmail() { return currentAlias ? `${currentAlias}@${appDomain}` : ''; }
-function escapeHtml(v) { return String(v||'').replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+function currentEmail() {
+    return currentAlias ? `${currentAlias}@${appDomain}` : '';
+}
+
+function escapeHtml(value) {
+    return String(value || '').replace(/[&<>'"]/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+    }[ch]));
+}
 
 function renderEmail() {
     const box = document.getElementById('currentEmail');
     if(box) box.textContent = currentAlias ? currentEmail() : 'belum ada alias';
+    
     const inp = document.getElementById('customAlias');
     if(inp) inp.value = currentAlias;
+
     const reg = document.getElementById('regAlias');
     if(reg) reg.value = currentAlias;
 }
 
-function setViewerEmpty(text) {
-    document.getElementById('viewerHeader').innerHTML = `<h3 class="viewer-subject">${escapeHtml(text)}</h3><div class="viewer-meta">Pilih email dari daftar inbox.</div>`;
-    document.getElementById('viewerFrame').srcdoc = "<div style='font-family:Arial,sans-serif;padding:24px;color:#666'>Belum ada email dipilih.</div>";
+function setViewerEmpty(text = 'Belum ada email dipilih.') {
+    document.getElementById('viewerHeader').innerHTML = `
+        <h3 class="viewer-subject">${escapeHtml(text)}</h3>
+        <div class="viewer-meta">Pilih email dari daftar inbox.</div>
+    `;
+    document.getElementById('viewerFrame').srcdoc =
+        "<div style='font-family:Arial,sans-serif;padding:24px;color:#666'>Belum ada email dipilih.</div>";
 }
 
 function setLoadingViewer() {
-    document.getElementById('viewerHeader').innerHTML = `<h3 class="viewer-subject pulse" style="color: var(--soft);">Memuat email...</h3><div class="viewer-meta">Sedang mengunduh konten</div>`;
-    document.getElementById('viewerFrame').srcdoc = `<center style="margin-top:100px; font-family:sans-serif; color:#64748b;">Memuat...</center>`;
+    document.getElementById('viewerHeader').innerHTML = `
+        <h3 class="viewer-subject pulse" style="color: var(--soft);">Memuat email...</h3>
+        <div class="viewer-meta">Mohon tunggu, sedang menghubungi server</div>
+    `;
+    document.getElementById('viewerFrame').srcdoc = `
+        <style>
+            @keyframes spin { to { transform: rotate(360deg); } }
+            body { font-family: 'Inter', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 85vh; margin: 0; background: #fff; color: #64748b; }
+            .spinner { width: 40px; height: 40px; border: 4px solid rgba(59,130,246,0.1); border-radius: 50%; border-top-color: #3b82f6; animation: spin 0.8s ease-in-out infinite; margin-bottom: 20px; }
+        </style>
+        <body>
+            <div class="spinner"></div>
+            <div style="font-weight:500;">Mengunduh isi pesan...</div>
+        </body>
+    `;
 }
 
-async function refreshInbox() {
-    if (!currentAlias) return;
+function normalizeAlias(value) {
+    return value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+}
+
+async function generateAlias() {
+    if (!isAdmin) return;
+    const res = await fetch('api_generate.php');
+    const data = await res.json();
+
+    currentAlias = data.alias || '';
+    selectedId = null;
+    localStorage.setItem('tm_alias', currentAlias);
+
+    renderEmail();
+    await refreshInbox();
+}
+
+function renderInbox(messages, infoText) {
+    const list = document.getElementById('messageList');
     const status = document.getElementById('inboxStatus');
-    status.textContent = `Mengecek ${currentAlias}...`;
-    try {
-        const res = await fetch(`api_inbox.php?alias=${encodeURIComponent(currentAlias)}`);
-        const data = await res.json();
-        if (!data.ok) { status.textContent = data.error; return; }
-        currentMessages = data.messages || [];
-        if (currentMessages.length > 0) {
-            const topId = currentMessages[0].id;
-            if (lastMessageId !== null && String(topId) !== String(lastMessageId)) playNotificationSound();
-            lastMessageId = topId;
-        } else { lastMessageId = null; }
-        initialLoad = false;
-        renderInbox(currentMessages, `${data.count} email • updated ${new Date().toLocaleTimeString()}`);
-        if (currentMessages.length > 0) {
-            const stillIdx = currentMessages.findIndex(m => String(m.id) === String(selectedId));
-            if (selectedId === null || stillIdx === -1) { selectedId = currentMessages[0].id; openMessage(selectedId, false); }
-            highlightSelected(selectedId);
-        }
-    } catch (err) { console.error(err); }
-}
 
-function renderInbox(msgs, info) {
-    const list = document.getElementById('messageList'), stat = document.getElementById('inboxStatus');
-    stat.textContent = info; list.innerHTML = '';
-    if (!msgs.length) {
-        list.innerHTML = `<div class="empty">Inbox kosong untuk <strong>${currentAlias}</strong>.</div>`;
-        setViewerEmpty('Belum ada pesan'); return;
+    status.textContent = infoText;
+    list.innerHTML = '';
+
+    if (!messages.length) {
+        list.innerHTML = `<div class="empty">Belum ada email masuk ke <strong>${escapeHtml(currentEmail())}</strong>.</div>`;
+        setViewerEmpty('Inbox masih kosong');
+        return;
     }
-    msgs.forEach(m => {
-        const div = document.createElement('div');
-        div.className = 'message-item' + (selectedId === m.id ? ' active' : '');
-        div.dataset.id = m.id;
-        div.innerHTML = `<div class="message-subject">${escapeHtml(m.subject || '(No Subject)')}</div><div class="message-meta">${escapeHtml(m.from)}</div>`;
-        div.onclick = () => openMessage(m.id);
-        list.appendChild(div);
+
+    messages.forEach((msg) => {
+        const item = document.createElement('div');
+        item.className = 'message-item' + (selectedId === msg.id ? ' active' : '');
+        item.dataset.id = msg.id;
+        item.innerHTML = `
+            <div class="message-subject">${escapeHtml(msg.subject || '(Tanpa subjek)')}</div>
+            <div class="message-meta">${escapeHtml(msg.from || '-')} • ${escapeHtml(msg.date || '-')}</div>
+            <div class="message-preview">${escapeHtml(msg.preview || '')}</div>
+        `;
+        item.addEventListener('click', () => openMessage(msg.id));
+        list.appendChild(item);
     });
 }
 
 function highlightSelected(id) {
-    document.querySelectorAll('.message-item').forEach(el => el.classList.toggle('active', el.dataset.id === String(id)));
+    document.querySelectorAll('.message-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === String(id));
+    });
 }
 
-async function openMessage(id, highlight = true) {
+async function refreshInbox() {
+    if (!currentAlias) return;
+
+    const status = document.getElementById('inboxStatus');
+    console.log(`[Polling] Mengecek inbox untuk: ${currentEmail()}`);
+    status.textContent = `Mengecek ${currentEmail()}...`;
+
+    try {
+        const res = await fetch(`api_inbox.php?alias=${encodeURIComponent(currentAlias)}`);
+        const data = await res.json();
+
+        if (!data.ok) {
+            console.error('[Polling] Server error:', data.error);
+            status.textContent = data.error || 'Gagal memuat inbox.';
+            return;
+        }
+
+        currentMessages = Array.isArray(data.messages) ? data.messages : [];
+        console.log(`[Polling] Berhasil. Dapat ${currentMessages.length} email.`);
+        
+        // Deteksi email baru dan mainkan suara
+        if (currentMessages.length > 0) {
+            const topId = currentMessages[0].id;
+            console.log(`[Check] ID Email Terbaru: ${topId} | Terakhir: ${lastMessageId}`);
+
+            // LOGIKA DIPERBAIKI: Tetap bunyi jika sebelumnya inbox kosong (lastMessageId null)
+            const isDifferent = lastMessageId !== null && String(topId) !== String(lastMessageId);
+            const isFirstArrival = lastMessageId === null && !initialLoad;
+
+            if (isDifferent || isFirstArrival) {
+                console.log('%c[NOTIF] ADA EMAIL BARU! Memicu suara...', 'color: #22c55e; font-weight: bold; font-size: 14px;');
+                playNotificationSound();
+            } else if (initialLoad) {
+                console.log('[Init] Pemuatan pertama, mencatat ID tanpa bunyi.');
+            } else {
+                console.log('[Check] Tidak ada email baru.');
+            }
+            lastMessageId = topId;
+        } else {
+            console.log('[Index] Inbox kosong.');
+            lastMessageId = null; // Reset agar saat ada email masuk nanti, ia terdeteksi sebagai "baru"
+        }
+        
+        initialLoad = false;
+
+        renderInbox(currentMessages, `${data.count} email • update ${data.polled_at}`);
+
+        if (!currentMessages.length) {
+            selectedId = null;
+            return;
+        }
+
+        const stillExists = currentMessages.some(msg => String(msg.id) === String(selectedId));
+        if (!selectedId || !stillExists) {
+            selectedId = currentMessages[0].id;
+            console.log(`[UI] Memilih email otomatis ke ID: ${selectedId}`);
+        }
+
+        highlightSelected(selectedId);
+        await openMessage(selectedId, false);
+    } catch (err) {
+        console.error('[Polling] Fetch failed:', err);
+    }
+}
+
+async function openMessage(id, doHighlight = true) {
     if (!currentAlias || !id) return;
-    selectedId = id; if (highlight) highlightSelected(id);
+
+    selectedId = id;
+    if (doHighlight) highlightSelected(id);
+    
+    // Tampilkan animasi skeleton/loading yang imersif
     setLoadingViewer();
-    const res = await fetch(`api_message.php?alias=${encodeURIComponent(currentAlias)}&id=${id}`);
+
+    const res = await fetch(`api_message.php?alias=${encodeURIComponent(currentAlias)}&id=${encodeURIComponent(id)}`);
     const data = await res.json();
-    if (!data.ok) { setViewerEmpty(data.error); return; }
-    const m = data.message;
-    document.getElementById('viewerHeader').innerHTML = `<h3 class="viewer-subject">${escapeHtml(m.subject)}</h3><div class="viewer-meta">Dari: ${escapeHtml(m.from)} • ${m.date}</div>`;
-    document.getElementById('viewerFrame').srcdoc = m.rendered_html;
+
+    if (!data.ok) {
+        document.getElementById('viewerHeader').innerHTML = `
+            <h3 class="viewer-subject">Gagal membuka email</h3>
+            <div class="viewer-meta">${escapeHtml(data.error || 'Terjadi kesalahan.')}</div>
+        `;
+        return;
+    }
+
+    const msg = data.message || {};
+    document.getElementById('viewerHeader').innerHTML = `
+        <h3 class="viewer-subject">${escapeHtml(msg.subject || '(Tanpa subjek)')}</h3>
+        <div class="viewer-meta">${escapeHtml(msg.from || '-')} • ${escapeHtml(msg.date || '-')}</div>
+    `;
+    document.getElementById('viewerFrame').srcdoc = msg.rendered_html || '<div style="padding:24px;font-family:Arial">Konten kosong.</div>';
+
+    if (doHighlight) highlightSelected(id);
 }
 
 if (isAdmin) {
-    document.getElementById('generateBtn').onclick = async () => {
-        const r = await fetch('api_generate.php'); const d = await r.json();
-        currentAlias = d.alias; localStorage.setItem('tm_alias', currentAlias);
-        renderEmail(); refreshInbox();
-    };
-    document.getElementById('useAliasBtn').onclick = () => {
-        const v = document.getElementById('customAlias').value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
-        if (v) { currentAlias = v; localStorage.setItem('tm_alias', v); renderEmail(); refreshInbox(); }
-    };
+    document.getElementById('generateBtn').addEventListener('click', generateAlias);
+    document.getElementById('useAliasBtn').addEventListener('click', async () => {
+        const input = document.getElementById('customAlias');
+        const alias = normalizeAlias(input.value);
+        if (!alias) return;
+        currentAlias = alias;
+        selectedId = null;
+        localStorage.setItem('tm_alias', currentAlias);
+        renderEmail();
+        await refreshInbox();
+    });
 }
 
-document.getElementById('copyBtn').onclick = () => {
-    navigator.clipboard.writeText(currentEmail()); alert('Alamat email dicopy!');
-};
+document.getElementById('copyBtn').addEventListener('click', async () => {
+    if (!currentAlias) return;
+    await navigator.clipboard.writeText(currentEmail());
+    alert('Email dicopy: ' + currentEmail());
+});
 
-document.getElementById('refreshBtn').onclick = refreshInbox;
+document.getElementById('refreshBtn').addEventListener('click', refreshInbox);
 
-renderEmail();
-refreshInbox();
-setInterval(refreshInbox, pollInterval);
+function startPolling() {
+    if (timer) clearInterval(timer);
+    timer = setInterval(refreshInbox, pollInterval);
+}
+
+(async function init() {
+    renderEmail();
+    await refreshInbox();
+    startPolling();
+})();
 </script>
 </body>
 </html>
