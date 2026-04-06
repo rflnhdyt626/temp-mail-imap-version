@@ -25,8 +25,11 @@ if (isset($_POST['admin_password'])) {
 }
 
 // HANDLE LOGIN USER (EMAIL SPECIFIC)
-if (isset($_POST['user_alias']) && isset($_POST['user_password'])) {
-    $alias = clean_alias($_POST['user_alias']);
+if (isset($_POST['user_email']) && isset($_POST['user_password'])) {
+    $emailInput = trim($_POST['user_email']);
+    // Ambil alias sebelum tanda @
+    $parts = explode('@', $emailInput);
+    $alias = clean_alias($parts[0]);
     $password = $_POST['user_password'];
     $accessList = get_access_list();
 
@@ -36,7 +39,7 @@ if (isset($_POST['user_alias']) && isset($_POST['user_password'])) {
         header('Location: ./');
         exit;
     } else {
-        $error = "Alias atau Password Email salah.";
+        $error = "Email atau Password salah.";
     }
 }
 
@@ -117,7 +120,7 @@ if (!$is_admin && !$user_alias):
 
         <div id="user-form" class="form-section active">
             <form method="post">
-                <input type="text" name="user_alias" placeholder="Alias Email (contoh: kerja123)" required>
+                <input type="text" name="user_email" placeholder="Email (contoh: kerja123@<?= htmlspecialchars($config['domain']) ?>)" required>
                 <input type="password" name="user_password" placeholder="Password Email" required>
                 <button type="submit">Buka Inbox</button>
             </form>
@@ -545,7 +548,7 @@ endif;
                         <tr>
                             <td><strong><?= htmlspecialchars($a) ?></strong></td>
                             <td><code><?= htmlspecialchars($p) ?></code></td>
-                            <td><small style="color:var(--blue)">alias: <?= $a ?></small></td>
+                            <td><small style="color:var(--blue)"><?= htmlspecialchars($a) ?>@<?= htmlspecialchars($config['domain']) ?></small></td>
                             <td>
                                 <a href="?delete_access=<?= urlencode($a) ?>" class="btn btn-danger" style="padding:6px 12px; font-size:12px; text-decoration:none;" onclick="return confirm('Hapus akses untuk email ini?')">Hapus</a>
                             </td>
@@ -583,6 +586,7 @@ endif;
             </div>
             <div class="viewer-body">
                 <iframe id="viewerFrame" class="viewer-frame" sandbox="allow-same-origin" srcdoc="<div style='font-family:Arial,sans-serif;padding:24px;color:#666'>Belum ada email dipilih.</div>"></iframe>
+            </div>
         </div>
     </div>
 </div>
