@@ -15,6 +15,50 @@ function app_config(): array
     return $config;
 }
 
+/**
+ * Mendapatkan daftar akses email dari file JSON
+ */
+function get_access_list(): array
+{
+    $file = __DIR__ . '/access_list.json';
+    if (!file_exists($file)) {
+        return [];
+    }
+    $data = json_decode(file_get_contents($file), true);
+    return is_array($data) ? $data : [];
+}
+
+/**
+ * Menyimpan daftar akses email ke file JSON
+ */
+function save_access_list(array $list): bool
+{
+    $file = __DIR__ . '/access_list.json';
+    return (bool) file_put_contents($file, json_encode($list, JSON_PRETTY_PRINT));
+}
+
+/**
+ * Cek apakah user saat ini memiliki akses ke alias tertentu
+ */
+function is_authorized(string $alias): bool
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    // Admin selalu punya akses
+    if (!empty($_SESSION['logged_in'])) {
+        return true;
+    }
+
+    // User biasa hanya punya akses jika alias cocok dengan yang di-login-kan
+    if (!empty($_SESSION['user_alias']) && $_SESSION['user_alias'] === $alias) {
+        return true;
+    }
+
+    return false;
+}
+
 function imap_connection_string(array $config): string
 {
     $imap = $config['imap'];

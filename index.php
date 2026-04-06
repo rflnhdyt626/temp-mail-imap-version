@@ -1,107 +1,161 @@
 <?php
 session_start();
+require __DIR__ . '/utils.php';
 
-$APP_PASSWORD = 'YOUR_PASSWORD_HERE'; // Ganti dengan password yang diinginkan
+$config = app_config();
+$APP_PASSWORD = $config['admin_password'] ?? 'admin'; // Diambil dari config.php
 
-if (isset($_POST['login_password'])) {
-    if ($_POST['login_password'] === $APP_PASSWORD) {
-        $_SESSION['logged_in'] = true;
-        header('Location: /');
-        exit;
-    }
-}
-
+// HANDLE LOGOUT
 if (isset($_GET['logout'])) {
     session_destroy();
-    header('Location: /');
+    header('Location: ./');
     exit;
 }
 
-if (empty($_SESSION['logged_in'])):
+// HANDLE LOGIN ADMIN
+if (isset($_POST['admin_password'])) {
+    if ($_POST['admin_password'] === $APP_PASSWORD) {
+        $_SESSION['logged_in'] = true;
+        $_SESSION['user_alias'] = null; // Clear user session if login as admin
+        header('Location: ./');
+        exit;
+    } else {
+        $error = "Password Admin salah.";
+    }
+}
+
+// HANDLE LOGIN USER (EMAIL SPECIFIC)
+if (isset($_POST['user_alias']) && isset($_POST['user_password'])) {
+    $alias = clean_alias($_POST['user_alias']);
+    $password = $_POST['user_password'];
+    $accessList = get_access_list();
+
+    if (isset($accessList[$alias]) && $accessList[$alias] === $password) {
+        $_SESSION['user_alias'] = $alias;
+        $_SESSION['logged_in'] = false; // Not an admin
+        header('Location: ./');
+        exit;
+    } else {
+        $error = "Alias atau Password Email salah.";
+    }
+}
+
+// HANDLE REGISTER ALIAS (ADMIN ONLY)
+if (isset($_POST['register_alias']) && !empty($_SESSION['logged_in'])) {
+    $alias = clean_alias($_POST['register_alias']);
+    $pass = $_POST['register_password'] ?: '123456';
+    $list = get_access_list();
+    $list[$alias] = $pass;
+    save_access_list($list);
+    header('Location: ./?msg=registered');
+    exit;
+}
+
+// HANDLE DELETE ACCESS (ADMIN ONLY)
+if (isset($_GET['delete_access']) && !empty($_SESSION['logged_in'])) {
+    $alias = clean_alias($_GET['delete_access']);
+    $list = get_access_list();
+    unset($list[$alias]);
+    save_access_list($list);
+    header('Location: ./?msg=deleted');
+    exit;
+}
+
+// REDIRECT IF NOT AUTHORIZED
+$is_admin = !empty($_SESSION['logged_in']);
+$user_alias = $_SESSION['user_alias'] ?? null;
+
+if (!$is_admin && !$user_alias):
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Private Access</title>
+    <title>Login - Temp Mail</title>
     <style>
         * { box-sizing: border-box; }
         body {
-            margin: 0;
-            min-height: 100vh;
-            display: grid;
-            place-items: center;
+            margin: 0; min-height: 100vh; display: grid; place-items: center;
             font-family: Inter, Arial, sans-serif;
-            background:
-                radial-gradient(circle at top left, #1d4ed8 0%, transparent 35%),
-                radial-gradient(circle at bottom right, #16a34a 0%, transparent 30%),
-                #020617;
+            background: radial-gradient(circle at top left, #1d4ed8 0%, transparent 35%),
+                        radial-gradient(circle at bottom right, #16a34a 0%, transparent 30%), #020617;
             color: #e5e7eb;
         }
         .login-card {
-            width: 100%;
-            max-width: 420px;
+            width: 100%; max-width: 420px;
             background: rgba(15, 23, 42, 0.88);
             border: 1px solid rgba(255,255,255,0.08);
             backdrop-filter: blur(14px);
-            border-radius: 24px;
-            padding: 28px;
+            border-radius: 24px; padding: 28px;
             box-shadow: 0 20px 60px rgba(0,0,0,.35);
         }
-        h1 {
-            margin: 0 0 10px;
-            font-size: 28px;
-        }
-        p {
-            margin: 0 0 20px;
-            color: #94a3b8;
-        }
-        input, button {
-            width: 100%;
-            border: 0;
-            border-radius: 14px;
-            padding: 14px 16px;
-            font-size: 15px;
-        }
-        input {
-            background: #0f172a;
-            color: #fff;
-            border: 1px solid #334155;
-            margin-bottom: 12px;
-        }
-        button {
-            background: linear-gradient(135deg, #22c55e, #16a34a);
-            color: #052e16;
-            font-weight: 700;
-            cursor: pointer;
-        }
+        h1 { margin: 0 0 10px; font-size: 26px; }
+        p { margin: 0 0 24px; color: #94a3b8; font-size: 14px; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        .tab { cursor: pointer; color: #94a3b8; font-weight: 600; font-size: 14px; padding: 5px 10px; }
+        .tab.active { color: #22c55e; border-bottom: 2px solid #22c55e; }
+        .form-section { display: none; }
+        .form-section.active { display: block; }
+        input, button { width: 100%; border: 0; border-radius: 12px; padding: 12px 16px; font-size: 14px; margin-bottom: 12px; }
+        input { background: #0f172a; color: #fff; border: 1px solid #334155; }
+        button { background: linear-gradient(135deg, #22c55e, #16a34a); color: #052e16; font-weight: 700; cursor: pointer; }
+        .error { color: #f87171; font-size: 13px; margin-bottom: 10px; text-align: center; }
     </style>
 </head>
 <body>
     <div class="login-card">
-        <h1>Private Temp Mail</h1>
-        <p>Masuk untuk mengakses inbox sementara.</p>
-        <form method="post">
-            <input type="password" name="login_password" placeholder="Password" autocomplete="current-password">
-            <button type="submit">Masuk</button>
-        </form>
+        <h1>Temp Mail Access</h1>
+        <p>Silakan masuk untuk akses inbox.</p>
+        
+        <?php if(isset($error)): ?><div class="error"><?= $error ?></div><?php endif; ?>
+
+        <div class="tabs">
+            <div class="tab active" onclick="showTab('user')">User Email</div>
+            <div class="tab" onclick="showTab('admin')">Admin Panel</div>
+        </div>
+
+        <div id="user-form" class="form-section active">
+            <form method="post">
+                <input type="text" name="user_alias" placeholder="Alias Email (contoh: kerja123)" required>
+                <input type="password" name="user_password" placeholder="Password Email" required>
+                <button type="submit">Buka Inbox</button>
+            </form>
+        </div>
+
+        <div id="admin-form" class="form-section">
+            <form method="post">
+                <input type="password" name="admin_password" placeholder="Password Master Admin" required>
+                <button type="submit">Login Admin</button>
+            </form>
+        </div>
     </div>
+
+    <script>
+        function showTab(type) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.form-section').forEach(f => f.classList.remove('active'));
+            if(type === 'user') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+                document.getElementById('user-form').classList.add('active');
+            } else {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('admin-form').classList.add('active');
+            }
+        }
+    </script>
 </body>
 </html>
 <?php
 exit;
 endif;
-
-require __DIR__ . '/utils.php';
-$config = app_config();
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Temp Mail</title>
+    <title>Temp Mail - <?= $is_admin ? 'Admin' : $user_alias ?></title>
     <style>
         :root {
             --bg: #07111f;
@@ -176,6 +230,7 @@ $config = app_config();
             border-radius: var(--radius);
             box-shadow: var(--shadow);
             backdrop-filter: blur(14px);
+            margin-bottom: 20px;
         }
 
         .hero-card {
@@ -237,7 +292,7 @@ $config = app_config();
             font-size: 13px;
         }
 
-        .btn, input[type="text"] {
+        .btn, input[type="text"], input[type="password"] {
             border-radius: 14px;
             padding: 13px 15px;
             font-size: 14px;
@@ -269,8 +324,14 @@ $config = app_config();
             color: #e5e7eb;
             border: 1px solid var(--line);
         }
+        
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
 
-        input[type="text"] {
+        input[type="text"], input[type="password"] {
             width: 100%;
             border: 1px solid var(--line);
             background: rgba(255,255,255,0.03);
@@ -324,10 +385,6 @@ $config = app_config();
             border-color: rgba(59,130,246,.4);
             background: rgba(59,130,246,.08);
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        .message-item:active {
-            transform: translateY(1px) scale(0.97);
         }
 
         .message-item.active {
@@ -397,30 +454,26 @@ $config = app_config();
             background: #fff;
         }
 
+        /* Access Management Table */
+        .mgmt-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .mgmt-table th, .mgmt-table td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--line);
+        }
+        .mgmt-table th { color: var(--soft); font-size: 13px; font-weight: normal; }
+
         @media (max-width: 900px) {
-            .layout {
-                grid-template-columns: 1fr;
-            }
-
-            .sidebar,
-            .viewer {
-                min-height: auto;
-            }
-
-            .input-row {
-                grid-template-columns: 1fr;
-            }
-
-            .topbar {
-                flex-direction: column;
-                align-items: flex-start;
-            }
+            .layout { grid-template-columns: 1fr; }
+            .topbar { flex-direction: column; align-items: flex-start; }
+            .input-row { grid-template-columns: 1fr; }
         }
 
-        @keyframes pulse-anim {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
+        @keyframes pulse-anim { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .pulse { animation: pulse-anim 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     </style>
 </head>
@@ -428,39 +481,93 @@ $config = app_config();
 <div class="container">
     <div class="topbar">
         <div class="brand">
-            <h1>Temp Mail</h1>
-            <p><?= htmlspecialchars($config['domain'], ENT_QUOTES, 'UTF-8') ?> • inbox otomatis refresh tiap <?= (int)$config['poll_interval_seconds'] ?> detik</p>
+            <h1>Temp Mail <small style="font-size:12px; color:var(--green); background:rgba(34,197,94,0.1); padding:4px 8px; border-radius:6px;"><?= $is_admin ? 'ADMIN' : 'USER' ?></small></h1>
+            <p><?= htmlspecialchars($config['domain'], ENT_QUOTES, 'UTF-8') ?> • <?= $is_admin ? 'Semua Akses' : 'Akses Terbatas: ' . $user_alias ?></p>
         </div>
         <div style="display:flex; gap:10px; align-items:center;">
              <div id="audioStatusBadge" style="font-size:12px; padding:6px 12px; border-radius:10px; background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.3); display:flex; align-items:center; gap:6px;">
-                 <span id="audioStatusIcon">🔇</span> <span id="audioStatusText">Suara Mati (Klik untuk aktif)</span>
+                 <span id="audioStatusIcon">🔇</span> <span id="audioStatusText">Suara Mati</span>
              </div>
              <a class="logout" href="?logout=1">Logout</a>
         </div>
     </div>
 
+    <?php if ($is_admin): ?>
     <div class="hero">
         <div class="card hero-card">
-            <div class="domain-badge">Domain aktif: <?= htmlspecialchars($config['domain'], ENT_QUOTES, 'UTF-8') ?></div>
-            <h2>Email sementara, cepat dan simpel</h2>
-            <p class="sub">Generate alamat random, pakai alias manual kalau perlu, lalu baca email masuk langsung dari browser.</p>
-
+            <div class="domain-badge">Admin Dashboard</div>
+            <h2>Kelola Email Sementara</h2>
+            
             <div id="currentEmail" class="email-box">memuat...</div>
 
             <div class="controls">
-                <button class="btn btn-primary" id="generateBtn">Generate Email</button>
+                <button class="btn btn-primary" id="generateBtn">Generate Random</button>
                 <button class="btn btn-secondary" id="copyBtn">Copy</button>
                 <button class="btn btn-secondary" id="refreshBtn">Refresh</button>
             </div>
 
             <div class="input-row">
-                <input type="text" id="customAlias" placeholder="Masukkan alias manual, contoh: login2026">
-                <button class="btn btn-secondary" id="useAliasBtn">Pakai Alias</button>
+                <input type="text" id="customAlias" placeholder="Masukkan alias manual...">
+                <button class="btn btn-secondary" id="useAliasBtn">Gunakan</button>
             </div>
 
-            <p class="muted" style="margin-top:12px;">Hanya karakter a-z, angka, titik, garis bawah, dan strip yang dipakai.</p>
+            <div id="registerPanel" style="margin-top:20px; padding-top:20px; border-top:1px solid var(--line);">
+                <p style="font-weight:700; margin-bottom:10px;">Daftarkan Alias ini untuk User</p>
+                <form method="post" style="display:grid; grid-template-columns: 1fr 1fr auto; gap:10px;">
+                    <input type="text" name="register_alias" id="regAlias" readonly style="background:rgba(255,255,255,0.05);">
+                    <input type="text" name="register_password" placeholder="Set Password User" required>
+                    <button type="submit" class="btn btn-primary">Daftarkan & Simpan</button>
+                </form>
+            </div>
         </div>
     </div>
+
+    <div class="card" style="padding:24px;">
+        <h3 class="section-title">Email Terdaftar (Akses User)</h3>
+        <p class="muted">Hanya alias di bawah ini yang bisa dibuka oleh non-admin menggunakan password.</p>
+        <div style="overflow-x:auto;">
+            <table class="mgmt-table">
+                <thead>
+                    <tr>
+                        <th>Alias</th>
+                        <th>Password</th>
+                        <th>Link Akses</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    $accessList = get_access_list();
+                    if (empty($accessList)): ?>
+                        <tr><td colspan="4" class="muted" style="text-align:center; padding:20px;">Belum ada email yang didaftarkan.</td></tr>
+                    <?php else: 
+                        foreach($accessList as $a => $p): ?>
+                        <tr>
+                            <td><strong><?= htmlspecialchars($a) ?></strong></td>
+                            <td><code><?= htmlspecialchars($p) ?></code></td>
+                            <td><small style="color:var(--blue)">alias: <?= $a ?></small></td>
+                            <td>
+                                <a href="?delete_access=<?= urlencode($a) ?>" class="btn btn-danger" style="padding:6px 12px; font-size:12px; text-decoration:none;" onclick="return confirm('Hapus akses untuk email ini?')">Hapus</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php else: // USER MODE ?>
+    <div class="hero">
+        <div class="card hero-card">
+            <div class="domain-badge">User Access</div>
+            <h2>Email Aktif: <?= htmlspecialchars($user_alias) ?></h2>
+            <div id="currentEmail" class="email-box"><?= htmlspecialchars($user_alias) ?>@<?= $config['domain'] ?></div>
+            <div class="controls">
+                <button class="btn btn-primary" id="copyBtn">Copy Address</button>
+                <button class="btn btn-secondary" id="refreshBtn">Refresh Inbox</button>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <div class="layout">
         <div class="card sidebar">
@@ -475,12 +582,7 @@ $config = app_config();
                 <div class="viewer-meta">Pilih email dari daftar inbox.</div>
             </div>
             <div class="viewer-body">
-                <iframe
-                    id="viewerFrame"
-                    class="viewer-frame"
-                    sandbox="allow-same-origin"
-                    srcdoc="<div style='font-family:Arial,sans-serif;padding:24px;color:#666'>Belum ada email dipilih.</div>">
-                </iframe>
+                <iframe id="viewerFrame" class="viewer-frame" sandbox="allow-same-origin" srcdoc="<div style='font-family:Arial,sans-serif;padding:24px;color:#666'>Belum ada email dipilih.</div>"></iframe>
             </div>
         </div>
     </div>
@@ -489,323 +591,153 @@ $config = app_config();
 <script>
 const pollInterval = <?= (int)$config['poll_interval_seconds'] * 1000 ?>;
 const appDomain = <?= json_encode($config['domain']) ?>;
+const isAdmin = <?= $is_admin ? 'true' : 'false' ?>;
 
-let currentAlias = localStorage.getItem('tm_alias') || '';
+let currentAlias = isAdmin ? (localStorage.getItem('tm_alias') || '') : <?= json_encode($user_alias) ?>;
 let selectedId = null;
 let timer = null;
 let currentMessages = [];
 let lastMessageId = null;
 let initialLoad = true;
 
-// Konfigurasi Audio Web API (Lebih stabil untuk background tab)
-let audioCtx = null;
-let audioBuffer = null;
-let isAudioUnlocked = false;
-
-// Load file suara ke dalam Buffer satu kali saja di awal
+// Audio logic
+let audioCtx = null, audioBuffer = null, isAudioUnlocked = false;
 async function loadNotificationBuffer() {
     try {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const response = await fetch('notification.mp3');
         const arrayBuffer = await response.arrayBuffer();
         audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        console.log('[Audio] File notification.mp3 berhasil dimuat ke buffer.');
-    } catch (e) {
-        console.error('[Audio] Gagal memuat file mp3:', e);
-    }
+    } catch (e) { console.error('Audio load failed', e); }
 }
 
 function updateAudioUI(unlocked) {
-    const badge = document.getElementById('audioStatusBadge');
-    const icon = document.getElementById('audioStatusIcon');
-    const text = document.getElementById('audioStatusText');
-    if (!badge) return;
-
+    const badge = document.getElementById('audioStatusBadge'), icon = document.getElementById('audioStatusIcon'), text = document.getElementById('audioStatusText');
     if (unlocked) {
-        badge.style.background = "rgba(34,197,94,0.15)";
-        badge.style.color = "#4ade80";
-        badge.style.borderColor = "rgba(34,197,94,0.3)";
-        icon.textContent = "🔊";
-        text.innerHTML = 'Notifikasi Aktif <button onclick="playNotificationSound()" style="background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;padding:0;margin-left:5px;font-size:11px;">(Tes)</button>';
+        badge.style.background = "rgba(34,197,94,0.15)"; badge.style.color = "#4ade80"; badge.style.borderColor = "rgba(34,197,94,0.3)";
+        icon.textContent = "🔊"; text.textContent = "Notifikasi Aktif";
     }
 }
 
 async function forceUnlockAudio() {
     if (isAudioUnlocked) return;
-    
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') await audioCtx.resume();
-    
     if (!audioBuffer) await loadNotificationBuffer();
-
-    // Mainkan suara tes segera
-    playNotificationSound();
-    
-    isAudioUnlocked = true;
-    updateAudioUI(true);
-    console.log('[Audio] Berhasil di-Unlock lewat interaksi user.');
-
-    ['touchstart', 'click', 'mousedown'].forEach(evt => document.body.removeEventListener(evt, forceUnlockAudio));
+    isAudioUnlocked = true; updateAudioUI(true);
 }
-
-['touchstart', 'click', 'mousedown', 'keydown'].forEach(evt => 
-    document.body.addEventListener(evt, forceUnlockAudio)
-);
+['touchstart', 'click', 'keydown'].forEach(evt => document.body.addEventListener(evt, forceUnlockAudio));
 
 function playNotificationSound() {
-    if (!audioCtx || !audioBuffer) {
-        console.warn('[Audio] Buffer belum siap atau AudioContext belum di-unlock.');
-        return;
-    }
-
+    if (!audioCtx || !audioBuffer) return;
     try {
         if (audioCtx.state === 'suspended') audioCtx.resume();
-        
-        const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        
-        const gainNode = audioCtx.createGain();
-        gainNode.gain.value = 1.5; // Naikkan volume 150%
-        
-        source.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        
-        source.start(0);
-        console.log('[Audio] Perintah putar suara berhasil dikirim ke AudioContext.');
-    } catch (e) {
-        console.error('[Audio] Error saat memutar suara:', e);
-    }
+        const sc = audioCtx.createBufferSource(); sc.buffer = audioBuffer;
+        const gn = audioCtx.createGain(); gn.gain.value = 1.5;
+        sc.connect(gn); gn.connect(audioCtx.destination); sc.start(0);
+    } catch (e) {}
 }
 
-function currentEmail() {
-    return currentAlias ? `${currentAlias}@${appDomain}` : '';
-}
-
-function escapeHtml(value) {
-    return String(value || '').replace(/[&<>'"]/g, ch => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        "'": '&#39;',
-        '"': '&quot;'
-    }[ch]));
-}
+function currentEmail() { return currentAlias ? `${currentAlias}@${appDomain}` : ''; }
+function escapeHtml(v) { return String(v||'').replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 
 function renderEmail() {
-    document.getElementById('currentEmail').textContent = currentAlias ? currentEmail() : 'belum ada alias';
-    document.getElementById('customAlias').value = currentAlias;
+    const box = document.getElementById('currentEmail');
+    if(box) box.textContent = currentAlias ? currentEmail() : 'belum ada alias';
+    const inp = document.getElementById('customAlias');
+    if(inp) inp.value = currentAlias;
+    const reg = document.getElementById('regAlias');
+    if(reg) reg.value = currentAlias;
 }
 
-function setViewerEmpty(text = 'Belum ada email dipilih.') {
-    document.getElementById('viewerHeader').innerHTML = `
-        <h3 class="viewer-subject">${escapeHtml(text)}</h3>
-        <div class="viewer-meta">Pilih email dari daftar inbox.</div>
-    `;
-    document.getElementById('viewerFrame').srcdoc =
-        "<div style='font-family:Arial,sans-serif;padding:24px;color:#666'>Belum ada email dipilih.</div>";
+function setViewerEmpty(text) {
+    document.getElementById('viewerHeader').innerHTML = `<h3 class="viewer-subject">${escapeHtml(text)}</h3><div class="viewer-meta">Pilih email dari daftar inbox.</div>`;
+    document.getElementById('viewerFrame').srcdoc = "<div style='font-family:Arial,sans-serif;padding:24px;color:#666'>Belum ada email dipilih.</div>";
 }
 
 function setLoadingViewer() {
-    document.getElementById('viewerHeader').innerHTML = `
-        <h3 class="viewer-subject pulse" style="color: var(--soft);">Memuat email...</h3>
-        <div class="viewer-meta">Mohon tunggu, sedang menghubungi server</div>
-    `;
-    document.getElementById('viewerFrame').srcdoc = `
-        <style>
-            @keyframes spin { to { transform: rotate(360deg); } }
-            body { font-family: 'Inter', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 85vh; margin: 0; background: #fff; color: #64748b; }
-            .spinner { width: 40px; height: 40px; border: 4px solid rgba(59,130,246,0.1); border-radius: 50%; border-top-color: #3b82f6; animation: spin 0.8s ease-in-out infinite; margin-bottom: 20px; }
-        </style>
-        <body>
-            <div class="spinner"></div>
-            <div style="font-weight:500;">Mengunduh isi pesan...</div>
-        </body>
-    `;
-}
-
-async function generateAlias() {
-    const res = await fetch('api_generate.php');
-    const data = await res.json();
-
-    currentAlias = data.alias || '';
-    selectedId = null;
-    localStorage.setItem('tm_alias', currentAlias);
-
-    renderEmail();
-    await refreshInbox();
-}
-
-function normalizeAlias(value) {
-    return value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
-}
-
-function renderInbox(messages, infoText) {
-    const list = document.getElementById('messageList');
-    const status = document.getElementById('inboxStatus');
-
-    status.textContent = infoText;
-    list.innerHTML = '';
-
-    if (!messages.length) {
-        list.innerHTML = `<div class="empty">Belum ada email masuk ke <strong>${escapeHtml(currentEmail())}</strong>.</div>`;
-        setViewerEmpty('Inbox masih kosong');
-        return;
-    }
-
-    messages.forEach((msg) => {
-        const item = document.createElement('div');
-        item.className = 'message-item' + (selectedId === msg.id ? ' active' : '');
-        item.dataset.id = msg.id;
-        item.innerHTML = `
-            <div class="message-subject">${escapeHtml(msg.subject || '(Tanpa subjek)')}</div>
-            <div class="message-meta">${escapeHtml(msg.from || '-')} • ${escapeHtml(msg.date || '-')}</div>
-            <div class="message-preview">${escapeHtml(msg.preview || '')}</div>
-        `;
-        item.addEventListener('click', () => openMessage(msg.id));
-        list.appendChild(item);
-    });
-}
-
-function highlightSelected(id) {
-    document.querySelectorAll('.message-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.id === String(id));
-    });
+    document.getElementById('viewerHeader').innerHTML = `<h3 class="viewer-subject pulse" style="color: var(--soft);">Memuat email...</h3><div class="viewer-meta">Sedang mengunduh konten</div>`;
+    document.getElementById('viewerFrame').srcdoc = `<center style="margin-top:100px; font-family:sans-serif; color:#64748b;">Memuat...</center>`;
 }
 
 async function refreshInbox() {
     if (!currentAlias) return;
-
     const status = document.getElementById('inboxStatus');
-    console.log(`[Polling] Mengecek inbox untuk: ${currentEmail()}`);
-    status.textContent = `Mengecek ${currentEmail()}...`;
-
+    status.textContent = `Mengecek ${currentAlias}...`;
     try {
         const res = await fetch(`api_inbox.php?alias=${encodeURIComponent(currentAlias)}`);
         const data = await res.json();
-
-        if (!data.ok) {
-            console.error('[Polling] Server error:', data.error);
-            status.textContent = data.error || 'Gagal memuat inbox.';
-            return;
-        }
-
-        currentMessages = Array.isArray(data.messages) ? data.messages : [];
-        console.log(`[Polling] Berhasil. Dapat ${currentMessages.length} email.`);
-        
-        // Deteksi email baru dan mainkan suara
+        if (!data.ok) { status.textContent = data.error; return; }
+        currentMessages = data.messages || [];
         if (currentMessages.length > 0) {
             const topId = currentMessages[0].id;
-            console.log(`[Check] ID Email Terbaru: ${topId} | Terakhir: ${lastMessageId}`);
-
-            // LOGIKA DIPERBAIKI: Tetap bunyi jika sebelumnya inbox kosong (lastMessageId null)
-            const isDifferent = lastMessageId !== null && String(topId) !== String(lastMessageId);
-            const isFirstArrival = lastMessageId === null && !initialLoad;
-
-            if (isDifferent || isFirstArrival) {
-                console.log('%c[NOTIF] ADA EMAIL BARU! Memicu suara...', 'color: #22c55e; font-weight: bold; font-size: 14px;');
-                playNotificationSound();
-            } else if (initialLoad) {
-                console.log('[Init] Pemuatan pertama, mencatat ID tanpa bunyi.');
-            } else {
-                console.log('[Check] Tidak ada email baru.');
-            }
+            if (lastMessageId !== null && String(topId) !== String(lastMessageId)) playNotificationSound();
             lastMessageId = topId;
-        } else {
-            console.log('[Index] Inbox kosong.');
-            lastMessageId = null; // Reset agar saat ada email masuk nanti, ia terdeteksi sebagai "baru"
-        }
-        
+        } else { lastMessageId = null; }
         initialLoad = false;
-
-        renderInbox(currentMessages, `${data.count} email • update ${data.polled_at}`);
-
-        if (!currentMessages.length) {
-            selectedId = null;
-            return;
+        renderInbox(currentMessages, `${data.count} email • updated ${new Date().toLocaleTimeString()}`);
+        if (currentMessages.length > 0) {
+            const stillIdx = currentMessages.findIndex(m => String(m.id) === String(selectedId));
+            if (selectedId === null || stillIdx === -1) { selectedId = currentMessages[0].id; openMessage(selectedId, false); }
+            highlightSelected(selectedId);
         }
-
-        const stillExists = currentMessages.some(msg => String(msg.id) === String(selectedId));
-        if (!selectedId || !stillExists) {
-            selectedId = currentMessages[0].id;
-            console.log(`[UI] Memilih email otomatis ke ID: ${selectedId}`);
-        }
-
-        highlightSelected(selectedId);
-        await openMessage(selectedId, false);
-    } catch (err) {
-        console.error('[Polling] Fetch failed:', err);
-    }
+    } catch (err) { console.error(err); }
 }
 
-async function openMessage(id, doHighlight = true) {
+function renderInbox(msgs, info) {
+    const list = document.getElementById('messageList'), stat = document.getElementById('inboxStatus');
+    stat.textContent = info; list.innerHTML = '';
+    if (!msgs.length) {
+        list.innerHTML = `<div class="empty">Inbox kosong untuk <strong>${currentAlias}</strong>.</div>`;
+        setViewerEmpty('Belum ada pesan'); return;
+    }
+    msgs.forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'message-item' + (selectedId === m.id ? ' active' : '');
+        div.dataset.id = m.id;
+        div.innerHTML = `<div class="message-subject">${escapeHtml(m.subject || '(No Subject)')}</div><div class="message-meta">${escapeHtml(m.from)}</div>`;
+        div.onclick = () => openMessage(m.id);
+        list.appendChild(div);
+    });
+}
+
+function highlightSelected(id) {
+    document.querySelectorAll('.message-item').forEach(el => el.classList.toggle('active', el.dataset.id === String(id)));
+}
+
+async function openMessage(id, highlight = true) {
     if (!currentAlias || !id) return;
-
-    selectedId = id;
-    if (doHighlight) highlightSelected(id);
-    
-    // Tampilkan animasi skeleton/loading yang imersif
+    selectedId = id; if (highlight) highlightSelected(id);
     setLoadingViewer();
-
-    const res = await fetch(`api_message.php?alias=${encodeURIComponent(currentAlias)}&id=${encodeURIComponent(id)}`);
+    const res = await fetch(`api_message.php?alias=${encodeURIComponent(currentAlias)}&id=${id}`);
     const data = await res.json();
-
-    if (!data.ok) {
-        document.getElementById('viewerHeader').innerHTML = `
-            <h3 class="viewer-subject">Gagal membuka email</h3>
-            <div class="viewer-meta">${escapeHtml(data.error || 'Terjadi kesalahan.')}</div>
-        `;
-        return;
-    }
-
-    const msg = data.message || {};
-    document.getElementById('viewerHeader').innerHTML = `
-        <h3 class="viewer-subject">${escapeHtml(msg.subject || '(Tanpa subjek)')}</h3>
-        <div class="viewer-meta">${escapeHtml(msg.from || '-')} • ${escapeHtml(msg.date || '-')}</div>
-    `;
-    document.getElementById('viewerFrame').srcdoc = msg.rendered_html || '<div style="padding:24px;font-family:Arial">Konten kosong.</div>';
-
-    if (doHighlight) highlightSelected(id);
+    if (!data.ok) { setViewerEmpty(data.error); return; }
+    const m = data.message;
+    document.getElementById('viewerHeader').innerHTML = `<h3 class="viewer-subject">${escapeHtml(m.subject)}</h3><div class="viewer-meta">Dari: ${escapeHtml(m.from)} • ${m.date}</div>`;
+    document.getElementById('viewerFrame').srcdoc = m.rendered_html;
 }
 
-document.getElementById('generateBtn').addEventListener('click', generateAlias);
-
-document.getElementById('copyBtn').addEventListener('click', async () => {
-    if (!currentAlias) return;
-    await navigator.clipboard.writeText(currentEmail());
-    alert('Email dicopy: ' + currentEmail());
-});
-
-document.getElementById('useAliasBtn').addEventListener('click', async () => {
-    const input = document.getElementById('customAlias');
-    const alias = normalizeAlias(input.value);
-
-    if (!alias) return;
-
-    currentAlias = alias;
-    selectedId = null;
-    localStorage.setItem('tm_alias', currentAlias);
-
-    renderEmail();
-    await refreshInbox();
-});
-
-document.getElementById('refreshBtn').addEventListener('click', refreshInbox);
-
-function startPolling() {
-    if (timer) clearInterval(timer);
-    timer = setInterval(refreshInbox, pollInterval);
+if (isAdmin) {
+    document.getElementById('generateBtn').onclick = async () => {
+        const r = await fetch('api_generate.php'); const d = await r.json();
+        currentAlias = d.alias; localStorage.setItem('tm_alias', currentAlias);
+        renderEmail(); refreshInbox();
+    };
+    document.getElementById('useAliasBtn').onclick = () => {
+        const v = document.getElementById('customAlias').value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+        if (v) { currentAlias = v; localStorage.setItem('tm_alias', v); renderEmail(); refreshInbox(); }
+    };
 }
 
-(async function init() {
-    if (!currentAlias) {
-        await generateAlias();
-    } else {
-        currentAlias = normalizeAlias(currentAlias);
-        renderEmail();
-        await refreshInbox();
-    }
-    startPolling();
-})();
+document.getElementById('copyBtn').onclick = () => {
+    navigator.clipboard.writeText(currentEmail()); alert('Alamat email dicopy!');
+};
+
+document.getElementById('refreshBtn').onclick = refreshInbox;
+
+renderEmail();
+refreshInbox();
+setInterval(refreshInbox, pollInterval);
 </script>
 </body>
 </html>

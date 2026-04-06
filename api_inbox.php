@@ -8,6 +8,10 @@ if ($alias === '') {
     json_response(['ok' => false, 'error' => 'Alias wajib diisi.'], 422);
 }
 
+if (!is_authorized($alias)) {
+    json_response(['ok' => false, 'error' => 'Akses ditolak. Silakan login ke email ini.'], 403);
+}
+
 $targetEmail = alias_email($alias);
 $stream = open_imap();
 

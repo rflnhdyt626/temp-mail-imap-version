@@ -7,6 +7,10 @@ if ($alias === '' || $id <= 0) {
     json_response(['ok' => false, 'error' => 'Alias dan id wajib diisi.'], 422);
 }
 
+if (!is_authorized($alias)) {
+    json_response(['ok' => false, 'error' => 'Akses ditolak.'], 403);
+}
+
 $targetEmail = alias_email($alias);
 $stream = open_imap();
 $header = imap_headerinfo($stream, $id);
