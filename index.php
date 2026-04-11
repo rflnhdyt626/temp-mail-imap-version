@@ -54,16 +54,6 @@ if (isset($_POST['register_alias']) && !empty($_SESSION['logged_in'])) {
     exit;
 }
 
-// HANDLE DELETE ACCESS (ADMIN ONLY)
-if (isset($_GET['delete_access']) && !empty($_SESSION['logged_in'])) {
-    $alias = clean_alias($_GET['delete_access']);
-    $list = get_access_list();
-    unset($list[$alias]);
-    save_access_list($list);
-    header('Location: ./?msg=deleted');
-    exit;
-}
-
 // REDIRECT IF NOT AUTHORIZED
 $is_admin = !empty($_SESSION['logged_in']);
 $user_alias = $_SESSION['user_alias'] ?? null;
@@ -525,38 +515,12 @@ endif;
         </div>
     </div>
 
-    <div class="card" style="padding:24px;">
-        <h3 class="section-title">Email Terdaftar (Akses User)</h3>
-        <p class="muted">Hanya alias di bawah ini yang bisa dibuka oleh non-admin menggunakan password.</p>
-        <div style="overflow-x:auto;">
-            <table class="mgmt-table">
-                <thead>
-                    <tr>
-                        <th>Alias</th>
-                        <th>Password</th>
-                        <th>Link Akses</th>
-                        <th>Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php 
-                    $accessList = get_access_list();
-                    if (empty($accessList)): ?>
-                        <tr><td colspan="4" class="muted" style="text-align:center; padding:20px;">Belum ada email yang didaftarkan.</td></tr>
-                    <?php else: 
-                        foreach($accessList as $a => $p): ?>
-                        <tr>
-                            <td><strong><?= htmlspecialchars($a) ?></strong></td>
-                            <td><code><?= htmlspecialchars($p) ?></code></td>
-                            <td><small style="color:var(--blue)"><?= htmlspecialchars($a) ?>@<?= htmlspecialchars($config['domain']) ?></small></td>
-                            <td>
-                                <a href="?delete_access=<?= urlencode($a) ?>" class="btn btn-danger" style="padding:6px 12px; font-size:12px; text-decoration:none;" onclick="return confirm('Hapus akses untuk email ini?')">Hapus</a>
-                            </td>
-                        </tr>
-                    <?php endforeach; endif; ?>
-                </tbody>
-            </table>
+    <div class="card" style="padding:24px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h3 class="section-title" style="margin:0;">Email Terdaftar</h3>
+            <p class="muted" style="margin:5px 0 0;">Lihat dan kelola semua email yang memiliki akses user.</p>
         </div>
+        <a href="registered.php" class="btn btn-secondary" style="text-decoration:none;">Buka Daftar Email →</a>
     </div>
     <?php else: // USER MODE ?>
     <div class="hero">
