@@ -16,7 +16,8 @@ if (isset($_GET['logout'])) {
 if (isset($_POST['admin_password'])) {
     if ($_POST['admin_password'] === $APP_PASSWORD) {
         $_SESSION['logged_in'] = true;
-        $_SESSION['user_alias'] = null; // Clear user session if login as admin
+        $_SESSION['user_email'] = null; // Clear user session if login as admin
+        $_SESSION['user_alias'] = null; 
         header('Location: ./');
         exit;
     } else {
@@ -26,15 +27,14 @@ if (isset($_POST['admin_password'])) {
 
 // HANDLE LOGIN USER (EMAIL SPECIFIC)
 if (isset($_POST['user_email']) && isset($_POST['user_password'])) {
-    $emailInput = trim($_POST['user_email']);
-    // Ambil alias sebelum tanda @
-    $parts = explode('@', $emailInput);
-    $alias = clean_alias($parts[0]);
+    $emailInput = strtolower(trim($_POST['user_email']));
     $password = $_POST['user_password'];
     $accessList = get_access_list();
 
-    if (isset($accessList[$alias]) && $accessList[$alias] === $password) {
-        $_SESSION['user_alias'] = $alias;
+    if (isset($accessList[$emailInput]) && $accessList[$emailInput] === $password) {
+        $_SESSION['user_email'] = $emailInput;
+        $parts = explode('@', $emailInput);
+        $_SESSION['user_alias'] = $parts[0];
         $_SESSION['logged_in'] = false; // Not an admin
         header('Location: ./');
         exit;
@@ -44,21 +44,47 @@ if (isset($_POST['user_email']) && isset($_POST['user_password'])) {
 }
 
 // HANDLE REGISTER ALIAS (ADMIN ONLY)
-if (isset($_POST['register_alias']) && !empty($_SESSION['logged_in'])) {
-    $alias = clean_alias($_POST['register_alias']);
+if (isset($_POST['register_email']) && !empty($_SESSION['logged_in'])) {
+    $email = strtolower(trim($_POST['register_email']));
     $pass = $_POST['register_password'] ?: '123456';
     $list = get_access_list();
-    $list[$alias] = $pass;
+    $list[$email] = $pass;
     save_access_list($list);
     header('Location: ./?msg=registered');
     exit;
 }
 
+// HANDLE DOMAIN MANAGEMENT (ADMIN ONLY)
+if (isset($_POST['add_domain']) && !empty($_SESSION['logged_in'])) {
+    $newDomain = strtolower(trim($_POST['add_domain']));
+    if ($newDomain) {
+        $domains = get_domains();
+        if (!in_array($newDomain, $domains)) {
+            $domains[] = $newDomain;
+            save_domains($domains);
+        }
+    }
+    header('Location: ./');
+    exit;
+}
+
+if (isset($_GET['delete_domain']) && !empty($_SESSION['logged_in'])) {
+    $delDomain = $_GET['delete_domain'];
+    $domains = get_domains();
+    $domains = array_values(array_filter($domains, fn($d) => $d !== $delDomain));
+    save_domains($domains);
+    header('Location: ./');
+    exit;
+}
+
 // REDIRECT IF NOT AUTHORIZED
 $is_admin = !empty($_SESSION['logged_in']);
+$user_email = $_SESSION['user_email'] ?? null;
 $user_alias = $_SESSION['user_alias'] ?? null;
+$domains = get_domains();
+$defaultDomain = $domains[0] ?? $config['domain'];
 
-if (!$is_admin && !$user_alias):
+if (!$is_admin && !$user_email):
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -110,7 +136,7 @@ if (!$is_admin && !$user_alias):
 
         <div id="user-form" class="form-section active">
             <form method="post">
-                <input type="text" name="user_email" placeholder="Email (contoh: kerja123@<?= htmlspecialchars($config['domain']) ?>)" required>
+                <input type="text" name="user_email" placeholder="Email (contoh: kerja123@<?= htmlspecialchars($defaultDomain) ?>)" required>
                 <input type="password" name="user_password" placeholder="Password Email" required>
                 <button type="submit">Buka Inbox</button>
             </form>
@@ -475,7 +501,7 @@ endif;
     <div class="topbar">
         <div class="brand">
             <h1>Temp Mail <small style="font-size:12px; color:var(--green); background:rgba(34,197,94,0.1); padding:4px 8px; border-radius:6px;"><?= $is_admin ? 'ADMIN' : 'USER' ?></small></h1>
-            <p><?= htmlspecialchars($config['domain'], ENT_QUOTES, 'UTF-8') ?> • <?= $is_admin ? 'Semua Akses' : 'Akses Terbatas: ' . $user_alias ?></p>
+            <p><?= htmlspecialchars($is_admin ? count($domains) . ' Domains' : $user_email) ?> • <?= $is_admin ? 'Semua Akses' : 'Akses Terbatas' ?></p>
         </div>
         <div style="display:flex; gap:10px; align-items:center;">
              <div id="audioStatusBadge" style="font-size:12px; padding:6px 12px; border-radius:10px; background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.3); display:flex; align-items:center; gap:6px;">
@@ -499,19 +525,43 @@ endif;
                 <button class="btn btn-secondary" id="refreshBtn">Refresh</button>
             </div>
 
-            <div class="input-row">
+            <div class="input-row" style="grid-template-columns: 1fr 180px auto;">
                 <input type="text" id="customAlias" placeholder="Masukkan alias manual...">
+                <select id="domainSelect" class="btn btn-secondary" style="background: rgba(255,255,255,0.05); text-align: left; padding-left: 10px;">
+                    <?php foreach ($domains as $d): ?>
+                        <option value="<?= htmlspecialchars($d) ?>"><?= htmlspecialchars($d) ?></option>
+                    <?php endforeach; ?>
+                </select>
                 <button class="btn btn-secondary" id="useAliasBtn">Gunakan</button>
             </div>
 
             <div id="registerPanel" style="margin-top:20px; padding-top:20px; border-top:1px solid var(--line);">
-                <p style="font-weight:700; margin-bottom:10px;">Daftarkan Alias ini untuk User</p>
+                <p style="font-weight:700; margin-bottom:10px;">Daftarkan Email ini untuk User</p>
                 <form method="post" style="display:grid; grid-template-columns: 1fr 1fr auto; gap:10px;">
-                    <input type="text" name="register_alias" id="regAlias" readonly style="background:rgba(255,255,255,0.05);">
+                    <input type="text" name="register_email" id="regEmail" readonly style="background:rgba(255,255,255,0.05);">
                     <input type="text" name="register_password" placeholder="Set Password User" required>
                     <button type="submit" class="btn btn-primary">Daftarkan & Simpan</button>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <div class="card" style="padding:24px;">
+        <h3 class="section-title">Kelola Domain</h3>
+        <p class="muted">Tambah atau hapus domain yang bisa digunakan untuk email sementara.</p>
+        
+        <form method="post" style="display:flex; gap:10px; margin: 15px 0;">
+            <input type="text" name="add_domain" placeholder="tambahdomain.com" style="max-width:300px;">
+            <button type="submit" class="btn btn-primary">Tambah Domain</button>
+        </form>
+
+        <div style="display:flex; flex-wrap:wrap; gap:10px;">
+            <?php foreach ($domains as $d): ?>
+                <div style="background:rgba(255,255,255,0.05); padding:8px 12px; border-radius:10px; border:1px solid var(--line); display:flex; align-items:center; gap:10px;">
+                    <span><?= htmlspecialchars($d) ?></span>
+                    <a href="?delete_domain=<?= urlencode($d) ?>" onclick="return confirm('Hapus domain ini?')" style="color:#f87171; text-decoration:none; font-weight:bold;">&times;</a>
+                </div>
+            <?php endforeach; ?>
         </div>
     </div>
 
@@ -527,7 +577,7 @@ endif;
         <div class="card hero-card">
             <div class="domain-badge">User Access</div>
             <h2>Email Aktif: <?= htmlspecialchars($user_alias) ?></h2>
-            <div id="currentEmail" class="email-box"><?= htmlspecialchars($user_alias) ?>@<?= $config['domain'] ?></div>
+            <div id="currentEmail" class="email-box"><?= htmlspecialchars($user_email) ?></div>
             <div class="controls">
                 <button class="btn btn-primary" id="copyBtn">Copy Address</button>
                 <button class="btn btn-secondary" id="refreshBtn">Refresh Inbox</button>
@@ -557,10 +607,10 @@ endif;
 
 <script>
 const pollInterval = <?= (int)$config['poll_interval_seconds'] * 1000 ?>;
-const appDomain = <?= json_encode($config['domain']) ?>;
 const isAdmin = <?= $is_admin ? 'true' : 'false' ?>;
 
 let currentAlias = isAdmin ? (localStorage.getItem('tm_alias') || '') : <?= json_encode($user_alias) ?>;
+let currentDomain = isAdmin ? (localStorage.getItem('tm_domain') || <?= json_encode($defaultDomain) ?>) : <?= json_encode(explode('@', $user_email)[1] ?? $defaultDomain) ?>;
 let selectedId = null;
 let timer = null;
 let currentMessages = [];
@@ -648,7 +698,7 @@ function playNotificationSound() {
 }
 
 function currentEmail() {
-    return currentAlias ? `${currentAlias}@${appDomain}` : '';
+    return currentAlias ? `${currentAlias}@${currentDomain}` : '';
 }
 
 function escapeHtml(value) {
@@ -668,8 +718,11 @@ function renderEmail() {
     const inp = document.getElementById('customAlias');
     if(inp) inp.value = currentAlias;
 
-    const reg = document.getElementById('regAlias');
-    if(reg) reg.value = currentAlias;
+    const dom = document.getElementById('domainSelect');
+    if(dom) dom.value = currentDomain;
+
+    const reg = document.getElementById('regEmail');
+    if(reg) reg.value = currentEmail();
 }
 
 function setViewerEmpty(text = 'Belum ada email dipilih.') {
@@ -705,12 +758,13 @@ function normalizeAlias(value) {
 
 async function generateAlias() {
     if (!isAdmin) return;
-    const res = await fetch('api_generate.php');
+    const res = await fetch(`api_generate.php?domain=${encodeURIComponent(currentDomain)}`);
     const data = await res.json();
 
     currentAlias = data.alias || '';
     selectedId = null;
     localStorage.setItem('tm_alias', currentAlias);
+    localStorage.setItem('tm_domain', currentDomain);
 
     renderEmail();
     await refreshInbox();
@@ -757,7 +811,7 @@ async function refreshInbox() {
     status.textContent = `Mengecek ${currentEmail()}...`;
 
     try {
-        const res = await fetch(`api_inbox.php?alias=${encodeURIComponent(currentAlias)}`);
+        const res = await fetch(`api_inbox.php?email=${encodeURIComponent(currentEmail())}`);
         const data = await res.json();
 
         if (!data.ok) {
@@ -823,7 +877,7 @@ async function openMessage(id, doHighlight = true) {
     // Tampilkan animasi skeleton/loading yang imersif
     setLoadingViewer();
 
-    const res = await fetch(`api_message.php?alias=${encodeURIComponent(currentAlias)}&id=${encodeURIComponent(id)}`);
+    const res = await fetch(`api_message.php?email=${encodeURIComponent(currentEmail())}&id=${encodeURIComponent(id)}`);
     const data = await res.json();
 
     if (!data.ok) {
@@ -848,13 +902,21 @@ if (isAdmin) {
     document.getElementById('generateBtn').addEventListener('click', generateAlias);
     document.getElementById('useAliasBtn').addEventListener('click', async () => {
         const input = document.getElementById('customAlias');
+        const dom = document.getElementById('domainSelect');
         const alias = normalizeAlias(input.value);
         if (!alias) return;
         currentAlias = alias;
+        currentDomain = dom.value;
         selectedId = null;
         localStorage.setItem('tm_alias', currentAlias);
+        localStorage.setItem('tm_domain', currentDomain);
         renderEmail();
         await refreshInbox();
+    });
+    document.getElementById('domainSelect').addEventListener('change', (e) => {
+        currentDomain = e.target.value;
+        localStorage.setItem('tm_domain', currentDomain);
+        renderEmail();
     });
 }
 

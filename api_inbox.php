@@ -3,16 +3,17 @@ require __DIR__ . '/utils.php';
 
 $startTime = microtime(true);
 
-$alias = clean_alias($_GET['alias'] ?? '');
-if ($alias === '') {
-    json_response(['ok' => false, 'error' => 'Alias wajib diisi.'], 422);
+$targetEmail = strtolower(trim($_GET['email'] ?? ''));
+if ($targetEmail === '') {
+    json_response(['ok' => false, 'error' => 'Email wajib diisi.'], 422);
 }
 
-if (!is_authorized($alias)) {
+if (!is_authorized($targetEmail)) {
     json_response(['ok' => false, 'error' => 'Akses ditolak. Silakan login ke email ini.'], 403);
 }
 
-$targetEmail = alias_email($alias);
+$parts = explode('@', $targetEmail);
+$alias = $parts[0] ?? '';
 $stream = open_imap();
 
 $total = imap_num_msg($stream);

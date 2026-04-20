@@ -1,17 +1,15 @@
 <?php
 require __DIR__ . '/utils.php';
 
-$alias = clean_alias($_GET['alias'] ?? '');
+$targetEmail = strtolower(trim($_GET['email'] ?? ''));
 $id = (int)($_GET['id'] ?? 0);
-if ($alias === '' || $id <= 0) {
-    json_response(['ok' => false, 'error' => 'Alias dan id wajib diisi.'], 422);
+if ($targetEmail === '' || $id <= 0) {
+    json_response(['ok' => false, 'error' => 'Email dan id wajib diisi.'], 422);
 }
 
-if (!is_authorized($alias)) {
+if (!is_authorized($targetEmail)) {
     json_response(['ok' => false, 'error' => 'Akses ditolak.'], 403);
 }
-
-$targetEmail = alias_email($alias);
 $stream = open_imap();
 $header = imap_headerinfo($stream, $id);
 if (!$header || !header_matches_alias($header, $targetEmail)) {

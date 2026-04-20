@@ -38,9 +38,34 @@ function save_access_list(array $list): bool
 }
 
 /**
- * Cek apakah user saat ini memiliki akses ke alias tertentu
+ * Mendapatkan daftar domain dari file JSON
  */
-function is_authorized(string $alias): bool
+function get_domains(): array
+{
+    $file = __DIR__ . '/domains.json';
+    if (!file_exists($file)) {
+        $config = app_config();
+        $default = [$config['domain']];
+        save_domains($default);
+        return $default;
+    }
+    $data = json_decode(file_get_contents($file), true);
+    return is_array($data) ? $data : [];
+}
+
+/**
+ * Menyimpan daftar domain ke file JSON
+ */
+function save_domains(array $domains): bool
+{
+    $file = __DIR__ . '/domains.json';
+    return (bool) file_put_contents($file, json_encode($domains, JSON_PRETTY_PRINT));
+}
+
+/**
+ * Cek apakah user saat ini memiliki akses ke email tertentu
+ */
+function is_authorized(string $email): bool
 {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
@@ -51,8 +76,8 @@ function is_authorized(string $alias): bool
         return true;
     }
 
-    // User biasa hanya punya akses jika alias cocok dengan yang di-login-kan
-    if (!empty($_SESSION['user_alias']) && $_SESSION['user_alias'] === $alias) {
+    // User biasa hanya punya akses jika email cocok dengan yang di-login-kan
+    if (!empty($_SESSION['user_email']) && $_SESSION['user_email'] === $email) {
         return true;
     }
 
@@ -137,10 +162,11 @@ function clean_alias(string $value): string
     return $value ?: random_local_part();
 }
 
-function alias_email(string $alias): string
+function alias_email(string $alias, ?string $domain = null): string
 {
     $config = app_config();
-    return clean_alias($alias) . '@' . $config['domain'];
+    $domain = $domain ?: $config['domain'];
+    return clean_alias($alias) . '@' . $domain;
 }
 
 function get_header_targets(object $header): array

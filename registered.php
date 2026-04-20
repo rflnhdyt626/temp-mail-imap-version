@@ -12,9 +12,9 @@ if (!$is_admin) {
 
 // HANDLE DELETE ACCESS
 if (isset($_GET['delete_access'])) {
-    $alias = clean_alias($_GET['delete_access']);
+    $email = trim($_GET['delete_access']);
     $list = get_access_list();
-    unset($list[$alias]);
+    unset($list[$email]);
     save_access_list($list);
     header('Location: registered.php?msg=deleted');
     exit;
@@ -183,25 +183,26 @@ $accessList = get_access_list();
             <table class="mgmt-table">
                 <thead>
                     <tr>
-                        <th>Alias</th>
+                        <th>Email</th>
                         <th>Password</th>
-                        <th>Alamat Lengkap</th>
                         <th style="text-align: right;">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($accessList)): ?>
                         <tr>
-                            <td colspan="4" class="muted" style="text-align:center; padding:40px;">Belum ada email yang didaftarkan.</td>
+                            <td colspan="3" class="muted" style="text-align:center; padding:40px;">Belum ada email yang didaftarkan.</td>
                         </tr>
                     <?php else: 
-                        foreach($accessList as $a => $p): ?>
+                        foreach($accessList as $email => $p): 
+                            $parts = explode('@', $email);
+                            $alias = $parts[0] ?? $email;
+                        ?>
                         <tr>
-                            <td><strong><?= htmlspecialchars($a) ?></strong></td>
+                            <td><strong><?= htmlspecialchars($email) ?></strong></td>
                             <td><code><?= htmlspecialchars($p) ?></code></td>
-                            <td><small style="color:var(--blue)"><?= htmlspecialchars($a) ?>@<?= htmlspecialchars($config['domain']) ?></small></td>
                             <td style="text-align: right;">
-                                <a href="?delete_access=<?= urlencode($a) ?>" class="btn-danger" onclick="return confirm('Hapus akses untuk email ini?')">Hapus</a>
+                                <a href="?delete_access=<?= urlencode($email) ?>" class="btn-danger" onclick="return confirm('Hapus akses untuk email ini?')">Hapus</a>
                             </td>
                         </tr>
                     <?php endforeach; endif; ?>
