@@ -891,7 +891,19 @@ async function openMessage(id, doHighlight = true) {
 
     try {
         const res = await fetch(`api_message.php?email=${encodeURIComponent(currentEmail())}&id=${encodeURIComponent(id)}`);
-        const data = await res.json();
+        const textData = await res.text();
+        
+        let data;
+        try {
+            data = JSON.parse(textData);
+        } catch (e) {
+            console.error("Parse error:", textData);
+            document.getElementById('viewerHeader').innerHTML = `
+                <h3 class="viewer-subject">Kesalahan Teknis API</h3>
+                <div class="viewer-meta" style="color:#f87171">${escapeHtml(textData.substring(0, 150)) || 'Respons tidak valid dari server'}</div>
+            `;
+            return;
+        }
 
         if (!data.ok) {
             document.getElementById('viewerHeader').innerHTML = `
@@ -911,7 +923,7 @@ async function openMessage(id, doHighlight = true) {
     } catch (err) {
         document.getElementById('viewerHeader').innerHTML = `
             <h3 class="viewer-subject">Gagal membuka email</h3>
-            <div class="viewer-meta">Kesalahan koneksi ke server.</div>
+            <div class="viewer-meta">Kesalahan koneksi: ${escapeHtml(err.message)}</div>
         `;
     }
 
