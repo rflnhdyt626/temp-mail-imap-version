@@ -616,6 +616,8 @@ let timer = null;
 let currentMessages = [];
 let lastMessageId = null;
 let initialLoad = true;
+let messageCache = {};
+let currentlyDisplayedId = null;
 
 // Konfigurasi Audio Web API (Lebih stabil untuk background tab)
 let audioCtx = null;
@@ -852,6 +854,7 @@ async function refreshInbox() {
 
         if (!currentMessages.length) {
             selectedId = null;
+            currentlyDisplayedId = null;
             return;
         }
 
@@ -862,7 +865,9 @@ async function refreshInbox() {
         }
 
         highlightSelected(selectedId);
-        await openMessage(selectedId, false);
+        if (currentlyDisplayedId !== selectedId) {
+            await openMessage(selectedId, false);
+        }
     } catch (err) {
         console.error('[Polling] Fetch failed:', err);
     }
@@ -874,28 +879,51 @@ async function openMessage(id, doHighlight = true) {
     selectedId = id;
     if (doHighlight) highlightSelected(id);
     
-    // Tampilkan animasi skeleton/loading yang imersif
-    setLoadingViewer();
-
-    const res = await fetch(`api_message.php?email=${encodeURIComponent(currentEmail())}&id=${encodeURIComponent(id)}`);
-    const data = await res.json();
-
-    if (!data.ok) {
-        document.getElementById('viewerHeader').innerHTML = `
-            <h3 class="viewer-subject">Gagal membuka email</h3>
-            <div class="viewer-meta">${escapeHtml(data.error || 'Terjadi kesalahan.')}</div>
-        `;
+    const cacheKey = currentEmail() + '_' + id;
+    if (messageCache[cacheKey]) {
+        renderMessageToViewer(messageCache[cacheKey]);
+        currentlyDisplayedId = id;
         return;
     }
 
-    const msg = data.message || {};
+    // Tampilkan animasi skeleton/loading yang imersif
+    setLoadingViewer();
+
+    try {
+        const res = await fetch(`api_message.php?email=${encodeURIComponent(currentEmail())}&id=${encodeURIComponent(id)}`);
+        const data = await res.json();
+
+        if (!data.ok) {
+            document.getElementById('viewerHeader').innerHTML = `
+                <h3 class="viewer-subject">Gagal membuka email</h3>
+                <div class="viewer-meta">${escapeHtml(data.error || 'Terjadi kesalahan.')}</div>
+            `;
+            return;
+        }
+
+        const msg = data.message || {};
+        messageCache[cacheKey] = msg;
+        
+        if (selectedId === id) {
+            renderMessageToViewer(msg);
+            currentlyDisplayedId = id;
+        }
+    } catch (err) {
+        document.getElementById('viewerHeader').innerHTML = `
+            <h3 class="viewer-subject">Gagal membuka email</h3>
+            <div class="viewer-meta">Kesalahan koneksi ke server.</div>
+        `;
+    }
+
+    if (doHighlight) highlightSelected(id);
+}
+
+function renderMessageToViewer(msg) {
     document.getElementById('viewerHeader').innerHTML = `
         <h3 class="viewer-subject">${escapeHtml(msg.subject || '(Tanpa subjek)')}</h3>
         <div class="viewer-meta">${escapeHtml(msg.from || '-')} • ${escapeHtml(msg.date || '-')}</div>
     `;
     document.getElementById('viewerFrame').srcdoc = msg.rendered_html || '<div style="padding:24px;font-family:Arial">Konten kosong.</div>';
-
-    if (doHighlight) highlightSelected(id);
 }
 
 if (isAdmin) {
